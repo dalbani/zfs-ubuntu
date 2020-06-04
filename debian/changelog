@@ -1,3 +1,12 @@
+zfs-linux (0.8.4-1ubuntu4) groovy; urgency=medium
+
+  * Don't report errors if modprobe fails (LP: #1880421)
+    - loading ZFS modules on zfs-utils installation is a nice
+      to have feature, but don't throw an error if modules are
+      not available to load
+
+ -- Colin Ian King <colin.king@canonical.com>  Thu, 4 Jun 2020 13:54:54 +0100
+
 zfs-linux (0.8.4-1ubuntu3) groovy; urgency=medium
 
   * Debian/tests: Move control.ubuntu to control

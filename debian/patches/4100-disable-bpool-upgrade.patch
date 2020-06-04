@@ -7,9 +7,11 @@ Bug-Ubuntu: https://bugs.launchpad.net/bugs/1847389
 Forwarded: not-needed
 Last-Update: 2020-04-14
 ===================================================================
---- a/cmd/zpool/zpool_main.c
-+++ b/cmd/zpool/zpool_main.c
-@@ -7989,6 +7989,16 @@ upgrade_enable_all(zpool_handle_t *zhp,
+Index: zfs-linux-0.8.4/cmd/zpool/zpool_main.c
+===================================================================
+--- zfs-linux-0.8.4.orig/cmd/zpool/zpool_main.c
++++ zfs-linux-0.8.4/cmd/zpool/zpool_main.c
+@@ -7991,6 +7991,16 @@ upgrade_enable_all(zpool_handle_t *zhp,
  {
  	int i, ret, count;
  	boolean_t firstff = B_TRUE;
@@ -26,8 +28,10 @@ Last-Update: 2020-04-14
  	nvlist_t *enabled = zpool_get_features(zhp);
  
  	count = 0;
---- a/lib/libzfs/libzfs_status.c
-+++ b/lib/libzfs/libzfs_status.c
+Index: zfs-linux-0.8.4/lib/libzfs/libzfs_status.c
+===================================================================
+--- zfs-linux-0.8.4.orig/lib/libzfs/libzfs_status.c
++++ zfs-linux-0.8.4/lib/libzfs/libzfs_status.c
 @@ -425,6 +425,14 @@ zpool_get_status(zpool_handle_t *zhp, ch
  		else
  			*msgid = zfs_msgid_table[ret];
