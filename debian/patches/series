@@ -16,3 +16,5 @@ enable-zed.patch
 force-verbose-rules.patch
 zfs-mount-container-start.patch
 4510-silently-ignore-modprobe-failure.patch
+git_fix_dependency_loop_encryption1.patch
+git_fix_dependency_loop_encryption2.patch
