@@ -1,3 +1,17 @@
+zfs-linux (0.8.4-1ubuntu5) groovy; urgency=medium
+
+  [ Jean-Baptiste Lallement ]
+  [ Didier Roche ]
+  * debian/patches/4000-zsys-support.patch:
+    - Readd ZSys support erroneously dropped during previous debian merge.
+    - Add external Luks store encryption support.
+  * debian/patches/git_fix_dependency_loop_encryption{1,2}.patch:
+    - Backport upstream patches (PR accepted, not merged yet) fixing a
+      dependency loop when encryption via Luks (like swap) is enabled.
+      (LP: #1875577)
+
+ -- Didier Roche <didrocks@ubuntu.com>  Wed, 10 Jun 2020 10:48:19 +0200
+
 zfs-linux (0.8.4-1ubuntu4) groovy; urgency=medium
 
   * Don't report errors if modprobe fails (LP: #1880421)
