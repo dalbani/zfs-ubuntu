@@ -1,3 +1,11 @@
+zfs-linux (0.8.4-1ubuntu6) groovy; urgency=medium
+
+  * debian/patches/4000-zsys-support.patch:
+    - Fix boot on non encrypted system when cryptsetup-initramfs isn’t
+      installed (LP: #1882975)
+
+ -- Didier Roche <didrocks@ubuntu.com>  Thu, 11 Jun 2020 08:17:14 +0200
+
 zfs-linux (0.8.4-1ubuntu5) groovy; urgency=medium
 
   [ Jean-Baptiste Lallement ]

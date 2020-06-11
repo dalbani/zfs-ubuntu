@@ -943,10 +943,10 @@ mountroot()
 	# ------------
 	# Open and mount luks keystore for any pools using one
 	CRYPTROOT=/scripts/local-top/cryptroot
-	TABFILE=/cryptroot/crypttab
 	# We already processed original crypttab by calling local-top. Only add zvol related ones now.
-	:>"${TABFILE}"
 	if [ -x "${CRYPTROOT}" ]; then
+	        TABFILE=/cryptroot/crypttab
+	        :>"${TABFILE}"
 		# Wait for all keystore devices in /dev/zvol to appear with a 5s timeout
 		timeout=50
 		NUMKS=$(zfs list -H -o name | grep '/keystore$' | wc -l)
