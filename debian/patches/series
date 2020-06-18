@@ -18,3 +18,4 @@ zfs-mount-container-start.patch
 4510-silently-ignore-modprobe-failure.patch
 git_fix_dependency_loop_encryption1.patch
 git_fix_dependency_loop_encryption2.patch
+4520-Linux-5.8-compat-__vmalloc.patch
