@@ -1,3 +1,10 @@
+zfs-linux (0.8.4-1ubuntu7) groovy; urgency=medium
+
+  * debian/patches/4520-Linux-5.8-compat-__vmalloc.patch
+    - Add Linux 5.8 compat fix
+
+ -- Colin Ian King <colin.king@canonical.com>  Thu, 18 Jun 2020 14:40:22 +0100
+
 zfs-linux (0.8.4-1ubuntu6) groovy; urgency=medium
 
   * debian/patches/4000-zsys-support.patch:
