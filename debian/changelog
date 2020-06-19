@@ -1,3 +1,23 @@
+zfs-linux (0.8.4-1ubuntu8) groovy; urgency=medium
+
+   [ Didier Roche ]
+   [ Jean-Baptiste Lallement ]
+   * debian/patches/4000-mount-encrypted-dataset-fix.patch:
+     - Upstreamable patch (under PR) for making keystore encryption or direct
+       ZFS encryption closer, and make the service chain more robust.
+   * debian/patches/4000-zsys-support.patch:
+     - Reupdate with latest version of code, which was reverted erroneously
+       to a previous version during debian merge.
+     - Align PROPS generated cache to zed list cacher properties.
+     - Add keystore encryption support.
+  * debian/patches/4500-fix-generator-invalid-cache.patch:
+    - Removed again, was removed before focal release, but has been
+      erroneously restored during debian merge.
+  * debian/patches/git_fix_dependency_loop_encryption2.patch:
+    - Refreshed
+
+ -- Jean-Baptiste Lallement <jean-baptiste.lallement@ubuntu.com>  Fri, 19 Jun 2020 16:17:05 +0200
+
 zfs-linux (0.8.4-1ubuntu7) groovy; urgency=medium
 
   * debian/patches/4520-Linux-5.8-compat-__vmalloc.patch

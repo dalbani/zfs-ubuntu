@@ -23,7 +23,7 @@ Index: zfs-linux-0.8.4/etc/systemd/system-generators/zfs-mount-generator.in
 ===================================================================
 --- zfs-linux-0.8.4.orig/etc/systemd/system-generators/zfs-mount-generator.in
 +++ zfs-linux-0.8.4/etc/systemd/system-generators/zfs-mount-generator.in
-@@ -214,6 +214,10 @@ ${keymountdep}
+@@ -280,6 +280,10 @@ ${automount_loadkey_extra_args}
  [Service]
  Type=oneshot
  RemainAfterExit=yes
@@ -32,5 +32,5 @@ Index: zfs-linux-0.8.4/etc/systemd/system-generators/zfs-mount-generator.in
 +StandardOutput=null
 +StandardError=null
  ExecStart=${keyloadcmd}
- ExecStop=@sbindir@/zfs unload-key '${dataset}'"   > "${dest_norm}/${keyloadunit}"
+ ExecStop=${keyunloadcmd}"   > "${dest_norm}/${keyloadunit}"
      fi
