@@ -1,3 +1,14 @@
+zfs-linux (0.8.4-1ubuntu9) groovy; urgency=medium
+
+   [ Colin Ian King ]
+   * Add risc-v 64 bit support, requires implementing risc-v setjmp/longjmp
+     and adding some relevant #defines
+     - 4521-enable-risc-v-isa.patch
+   * Disable HTML doc generation because of a Sphinx regression
+     between version 2.4.3-2 and 2.4.3-4 (see Debian bug 962276)
+
+ -- Colin Ian King <colin.king@canonical.com>  Tue, 21 Jul 2020 10:01:10 +0100
+
 zfs-linux (0.8.4-1ubuntu8) groovy; urgency=medium
 
    [ Didier Roche ]

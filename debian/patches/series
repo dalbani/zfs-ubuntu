@@ -19,3 +19,4 @@ zfs-mount-container-start.patch
 git_fix_dependency_loop_encryption1.patch
 git_fix_dependency_loop_encryption2.patch
 4520-Linux-5.8-compat-__vmalloc.patch
+4521-enable-risc-v-isa.patch
