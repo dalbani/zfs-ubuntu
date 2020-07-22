@@ -1,3 +1,14 @@
+zfs-linux (0.8.3-1ubuntu12.3) focal; urgency=medium
+
+  * Fix volume wait on locked encrypted zvols (LP: #1888405)
+    [ James Dingwall ] 
+    - 4620-zfs-vol-wait-fix-locked-encrypted-vols.patch
+      zfs-volume-wait.service systemd unit does not start if the encrypted
+      zvol is locked. The /sbin/zvol_wait should not wait for links when the
+      volume has property keystatus=unavailable. Add a check for this.
+
+ -- Colin Ian King <colin.king@canonical.com>  Wed, 22 Jul 2020 09:58:22 +0100
+
 zfs-linux (0.8.3-1ubuntu12.2) focal; urgency=medium
 
   * Don't report errors if modprobe fails (LP: #1880421)

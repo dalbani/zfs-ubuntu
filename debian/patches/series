@@ -20,3 +20,4 @@ force-verbose-rules.patch
 4603-Linux-5.6-compat-time_t.patch
 zfs-mount-container-start.patch
 4610-ICP-Improve-AES-GCM-performance.patch
+4620-zfs-vol-wait-fix-locked-encrypted-vols.patch
