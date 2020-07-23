@@ -72,6 +72,7 @@ else
   do_fail "zero or three arguments required"
 fi
 
+pools=$(zpool list -H -o name)
 
 # All needed information about each ZFS is available from
 # zfs list -H -t filesystem -o <properties>
@@ -88,6 +89,7 @@ process_line() {
   # shellcheck disable=SC2086
   set -- $1
   dataset="${1}"
+  pool="${dataset%%/*}"
   p_mountpoint="${2}"
   p_canmount="${3}"
   p_atime="${4}"
@@ -115,6 +117,7 @@ process_line() {
   wants="zfs-import.target"
   requires=""
   requiredmounts=""
+  bindsto=""
   wantedby=""
   requiredby=""
   noauto="off"
@@ -138,6 +141,18 @@ process_line() {
       [ "${p_systemd_requiresmountsfor}" != "-" ] ; then
     requiredmounts="RequiresMountsFor=${p_systemd_requiresmountsfor}"
   fi
+
+  # If the pool is already imported, zfs-import.target is not needed.  This
+  # avoids a dependency loop on root-on-ZFS systems:
+  # systemd-random-seed.service After (via RequiresMountsFor) var-lib.mount
+  # After zfs-import.target After zfs-import-{cache,scan}.service After
+  # cryptsetup.service After systemd-random-seed.service.
+  for p in $pools ; do
+    if [ "$p" = "$pool" ] ; then
+      wants=""
+      break
+    fi
+  done
 
   # Handle encryption
   if [ -n "${p_encroot}" ] &&
@@ -172,6 +187,12 @@ set -eu;\
 keystatus=\"\$\$(@sbindir@/zfs get -H -o value keystatus \"${dataset}\")\";\
 [ \"\$\$keystatus\" = \"unavailable\" ] || exit 0;\
 ${keyloadscript}'"
+      keyunloadcmd="\
+/bin/sh -c '\
+set -eu;\
+keystatus=\"\$\$(@sbindir@/zfs get -H -o value keystatus \"${dataset}\")\";\
+[ \"\$\$keystatus\" = \"available\" ] || exit 0;\
+@sbindir@/zfs unload-key \"${dataset}\"'"
 
 
 
@@ -191,19 +212,23 @@ Documentation=man:zfs-mount-generator(8)
 DefaultDependencies=no
 Wants=${wants}
 After=${after}
-Before=${before}
 ${requires}
 ${keymountdep}
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+# This avoids a dependency loop involving systemd-journald.socket if this
+# dataset is a parent of the root filesystem.
+StandardOutput=null
+StandardError=null
 ExecStart=${keyloadcmd}
-ExecStop=@sbindir@/zfs unload-key '${dataset}'"   > "${dest_norm}/${keyloadunit}"
+ExecStop=${keyunloadcmd}"   > "${dest_norm}/${keyloadunit}"
     fi
     # Update the dependencies for the mount file to want the
     # key-loading unit.
-    wants="${wants} ${keyloadunit}"
+    wants="${wants}"
+    bindsto="BindsTo=${keyloadunit}"
     after="${after} ${keyloadunit}"
   fi
 
@@ -414,6 +439,7 @@ Documentation=man:zfs-mount-generator(8)
 Before=${before}
 After=${after}
 Wants=${wants}
+${bindsto}
 ${requires}
 ${requiredmounts}
 
