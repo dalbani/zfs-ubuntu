@@ -1,3 +1,13 @@
+zfs-linux (0.8.3-1ubuntu12.4) focal; urgency=medium
+
+  * Fix zfs-dkms build on arm64 with PREEMPTION and BLK_CGROUP (LP: #1892001)
+    - 4700-Fix-DKMS-build-on-arm64-with-PREEMPTION-and-BLK_CGRO.patch
+      preempt_schedule_notrace is GPL-only so redfine it to preempt_schedule
+      on arm64 with PREEMPTION and BLK_CGROUP enabled to 'fix' the DKMS
+      build failure.
+
+ -- Juerg Haefliger <juergh@canonical.com>  Tue, 18 Aug 2020 11:10:41 +0200
+
 zfs-linux (0.8.3-1ubuntu12.3) focal; urgency=medium
 
   * Fix volume wait on locked encrypted zvols (LP: #1888405)
