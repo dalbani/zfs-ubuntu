@@ -1,3 +1,9 @@
+zfs-linux (0.8.4-1ubuntu12) hirsute; urgency=medium
+
+  * No-change rebuild to build with python3.9 as supported.
+
+ -- Matthias Klose <doko@ubuntu.com>  Sat, 24 Oct 2020 12:44:43 +0200
+
 zfs-linux (0.8.4-1ubuntu11) groovy; urgency=medium
 
   * Fix zfs-dkms build on arm64 with PREEMPTION and BLK_CGROUP (LP: #1892001)
