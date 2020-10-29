@@ -40,8 +40,12 @@
 #define	__x86
 #endif
 
+#if defined(_ILP32)
+/* x32-specific defines; careful to *not* define _LP64 here */
+#else
 #if !defined(_LP64)
 #define	_LP64
+#endif
 #endif
 
 #define	_ALIGNMENT_REQUIRED	1
@@ -209,7 +213,7 @@
 #else
 /*
  * Currently supported:
- * x86_64, i386, arm, powerpc, s390, sparc, mips and risc-v
+ * x86_64, x32, i386, arm, powerpc, s390, sparc, mips and risc-v
  */
 #error "Unsupported ISA type"
 #endif
