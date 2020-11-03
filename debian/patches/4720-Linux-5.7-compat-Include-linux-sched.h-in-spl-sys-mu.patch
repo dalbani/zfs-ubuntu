@@ -1,0 +1,33 @@
+From 772c69d230b34bab1aaab800b1f95010e237862f Mon Sep 17 00:00:00 2001
+From: Pavel Snajdr <snajpa@snajpa.net>
+Date: Thu, 20 Aug 2020 06:37:38 +0200
+Subject: [PATCH] Linux 5.7 compat: Include linux/sched.h in spl/sys/mutex.h
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+struct task_struct is needed for lockdep_off() in mutex.h
+
+This has popped up after e616cb8daadf (in linux-5.7-rc7).
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Pavel Snajdr <snajpa@snajpa.net>
+Closes #10741
+---
+ include/spl/sys/mutex.h | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/include/sys/mutex.h b/include/spl/sys/mutex.h
+index 73da23685..93f3af8fe 100644
+--- a/include/spl/sys/mutex.h
++++ b/include/spl/sys/mutex.h
+@@ -26,6 +26,7 @@
+ #define	_SPL_MUTEX_H
+ 
+ #include <sys/types.h>
++#include <linux/sched.h>
+ #include <linux/mutex.h>
+ #include <linux/lockdep.h>
+ #include <linux/compiler_compat.h>
+-- 
+2.27.0
+

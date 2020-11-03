@@ -1,0 +1,212 @@
+From d817c17100183b266aa6bf8b868e016805d51d16 Mon Sep 17 00:00:00 2001
+From: Coleman Kane <ckane@colemankane.org>
+Date: Sun, 9 Aug 2020 12:12:25 -0400
+Subject: [PATCH] Linux 5.9 compat: make_request_fn replaced with submit_bio
+ interface
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+The make_request_fn and associated API was replaced recently in a
+Linux 5.9 merge, to replace its functionality with a new submit_bio
+member in struct block_device_operations.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Coleman Kane <ckane@colemankane.org>
+(backport of upstream commit d817c17100183b266aa6bf8b868e016805d51d16)
+Signed-off-by: Colin Ian King <colin.king@canonical.com>
+Closes #10696
+
+---
+
+Index: zfs-linux-0.8.4/config/kernel-make-request-fn.m4
+===================================================================
+--- zfs-linux-0.8.4.orig/config/kernel-make-request-fn.m4
++++ zfs-linux-0.8.4/config/kernel-make-request-fn.m4
+@@ -34,73 +34,72 @@ AC_DEFUN([ZFS_AC_KERNEL_SRC_MAKE_REQUEST
+ 		struct request_queue *q __attribute__ ((unused));
+ 		q = blk_alloc_queue(make_request, NUMA_NO_NODE);
+ 	])
++
++	ZFS_LINUX_TEST_SRC([block_device_operations_submit_bio], [
++		#include <linux/blkdev.h>
++	],[
++		struct block_device_operations o;
++		o.submit_bio = NULL;
++	])
+ ])
+ 
+ AC_DEFUN([ZFS_AC_KERNEL_MAKE_REQUEST_FN], [
++	dnl # Checked as part of the blk_alloc_queue_request_fn test
+ 	dnl #
+-	dnl # Linux 5.7 API Change
+-	dnl # blk_alloc_queue() expects request function.
++	dnl # Linux 5.9 API Change
++	dnl # make_request_fn was moved into block_device_operations->submit_bio
+ 	dnl #
+-	AC_MSG_CHECKING([whether blk_alloc_queue() expects request function])
+-	ZFS_LINUX_TEST_RESULT([blk_alloc_queue_request_fn], [
+-		AC_MSG_RESULT(yes)
+-
+-		dnl # Checked as part of the blk_alloc_queue_request_fn test
+-		AC_MSG_CHECKING([whether make_request_fn() returns blk_qc_t])
++	AC_MSG_CHECKING([whether submit_bio is member of struct block_device_operations])
++	ZFS_LINUX_TEST_RESULT([block_device_operations_submit_bio], [
+ 		AC_MSG_RESULT(yes)
+ 
+-		AC_DEFINE(HAVE_BLK_ALLOC_QUEUE_REQUEST_FN, 1,
+-		    [blk_alloc_queue() expects request function])
+-		AC_DEFINE(MAKE_REQUEST_FN_RET, blk_qc_t,
+-		    [make_request_fn() return type])
+-		AC_DEFINE(HAVE_MAKE_REQUEST_FN_RET_QC, 1,
+-		    [Noting that make_request_fn() returns blk_qc_t])
+-	],[
+-		AC_MSG_RESULT(no)
++		AC_DEFINE(HAVE_SUBMIT_BIO_IN_BLOCK_DEVICE_OPERATIONS, 1,
++			[submit_bio is member of struct block_device_operations])
++		],[
+ 
+ 		dnl #
+-		dnl # Linux 3.2 API Change
+-		dnl # make_request_fn returns void.
++		dnl # Linux 5.7 API Change
++		dnl # blk_alloc_queue() expects request function.
+ 		dnl #
+-		AC_MSG_CHECKING([whether make_request_fn() returns void])
+-		ZFS_LINUX_TEST_RESULT([make_request_fn_void], [
++		AC_MSG_CHECKING([whether blk_alloc_queue() expects request function])
++		ZFS_LINUX_TEST_RESULT([blk_alloc_queue_request_fn], [
++			AC_MSG_CHECKING([whether make_request_fn() returns blk_qc_t])
+ 			AC_MSG_RESULT(yes)
+-			AC_DEFINE(MAKE_REQUEST_FN_RET, void,
++
++			AC_DEFINE(HAVE_BLK_ALLOC_QUEUE_REQUEST_FN, 1,
++			    [blk_alloc_queue() expects request function])
++			AC_DEFINE(MAKE_REQUEST_FN_RET, blk_qc_t,
+ 			    [make_request_fn() return type])
+-			AC_DEFINE(HAVE_MAKE_REQUEST_FN_RET_VOID, 1,
+-			    [Noting that make_request_fn() returns void])
++			AC_DEFINE(HAVE_MAKE_REQUEST_FN_RET_QC, 1,
++				[Noting that make_request_fn() returns blk_qc_t])
+ 		],[
+-			AC_MSG_RESULT(no)
+-
+ 			dnl #
+-			dnl # Linux 4.4 API Change
+-			dnl # make_request_fn returns blk_qc_t.
++			dnl # Linux 3.2 API Change
++			dnl # make_request_fn returns void.
+ 			dnl #
+-			AC_MSG_CHECKING(
+-			    [whether make_request_fn() returns blk_qc_t])
+-			ZFS_LINUX_TEST_RESULT([make_request_fn_blk_qc_t], [
++			AC_MSG_CHECKING([whether make_request_fn() returns void])
++			ZFS_LINUX_TEST_RESULT([make_request_fn_void], [
+ 				AC_MSG_RESULT(yes)
+-				AC_DEFINE(MAKE_REQUEST_FN_RET, blk_qc_t,
++				AC_DEFINE(MAKE_REQUEST_FN_RET, void,
+ 				    [make_request_fn() return type])
+-				AC_DEFINE(HAVE_MAKE_REQUEST_FN_RET_QC, 1,
+-				    [Noting that make_request_fn() ]
+-				    [returns blk_qc_t])
++				AC_DEFINE(HAVE_MAKE_REQUEST_FN_RET_VOID, 1,
++				    [Noting that make_request_fn() returns void])
+ 			],[
+ 				AC_MSG_RESULT(no)
+ 
+ 				dnl #
+-				dnl # Legacy API
+-				dnl # make_request_fn returns int.
++				dnl # Linux 4.4 API Change
++				dnl # make_request_fn returns blk_qc_t.
+ 				dnl #
+ 				AC_MSG_CHECKING(
+-				    [whether make_request_fn() returns int])
+-				ZFS_LINUX_TEST_RESULT([make_request_fn_int], [
++				    [whether make_request_fn() returns blk_qc_t])
++				ZFS_LINUX_TEST_RESULT([make_request_fn_blk_qc_t], [
+ 					AC_MSG_RESULT(yes)
+-					AC_DEFINE(MAKE_REQUEST_FN_RET, int,
++					AC_DEFINE(MAKE_REQUEST_FN_RET, blk_qc_t,
+ 					    [make_request_fn() return type])
+-					AC_DEFINE(HAVE_MAKE_REQUEST_FN_RET_INT,
+-					    1, [Noting that make_request_fn() ]
+-					    [returns int])
++					AC_DEFINE(HAVE_MAKE_REQUEST_FN_RET_QC, 1,
++					    [Noting that make_request_fn() ]
++					    [returns blk_qc_t])
+ 				],[
+ 					ZFS_LINUX_TEST_ERROR([make_request_fn])
+ 				])
+Index: zfs-linux-0.8.4/include/linux/blkdev_compat.h
+===================================================================
+--- zfs-linux-0.8.4.orig/include/linux/blkdev_compat.h
++++ zfs-linux-0.8.4/include/linux/blkdev_compat.h
+@@ -669,6 +669,7 @@ blk_generic_end_io_acct(struct request_q
+ #endif
+ }
+ 
++#ifndef HAVE_SUBMIT_BIO_IN_BLOCK_DEVICE_OPERATIONS
+ static inline struct request_queue *
+ blk_generic_alloc_queue(make_request_fn make_request, int node_id)
+ {
+@@ -682,5 +683,6 @@ blk_generic_alloc_queue(make_request_fn
+ 	return (q);
+ #endif
+ }
++#endif /* !HAVE_SUBMIT_BIO_IN_BLOCK_DEVICE_OPERATIONS */
+ 
+ #endif /* _ZFS_BLKDEV_H */
+Index: zfs-linux-0.8.4/module/zfs/zvol.c
+===================================================================
+--- zfs-linux-0.8.4.orig/module/zfs/zvol.c
++++ zfs-linux-0.8.4/module/zfs/zvol.c
+@@ -1017,9 +1017,17 @@ zvol_get_data(void *arg, lr_write_t *lr,
+ 	return (SET_ERROR(error));
+ }
+ 
++#ifdef HAVE_SUBMIT_BIO_IN_BLOCK_DEVICE_OPERATIONS
++static blk_qc_t
++zvol_submit_bio(struct bio *bio)
++#else
+ static MAKE_REQUEST_FN_RET
+ zvol_request(struct request_queue *q, struct bio *bio)
++#endif
+ {
++#ifdef HAVE_SUBMIT_BIO_IN_BLOCK_DEVICE_OPERATIONS
++	struct request_queue *q = bio->bi_disk->queue;
++#endif
+ 	zvol_state_t *zv = q->queuedata;
+ 	fstrans_cookie_t cookie = spl_fstrans_mark();
+ 	uint64_t offset = BIO_BI_SECTOR(bio) << 9;
+@@ -1139,7 +1147,8 @@ out:
+ 	spl_fstrans_unmark(cookie);
+ #ifdef HAVE_MAKE_REQUEST_FN_RET_INT
+ 	return (0);
+-#elif defined(HAVE_MAKE_REQUEST_FN_RET_QC)
++#elif defined(HAVE_MAKE_REQUEST_FN_RET_QC) || \
++	defined(HAVE_SUBMIT_BIO_IN_BLOCK_DEVICE_OPERATIONS)
+ 	return (BLK_QC_T_NONE);
+ #endif
+ }
+@@ -1676,6 +1685,9 @@ static struct block_device_operations zv
+ 	.revalidate_disk	= zvol_revalidate_disk,
+ 	.getgeo			= zvol_getgeo,
+ 	.owner			= THIS_MODULE,
++#ifdef HAVE_SUBMIT_BIO_IN_BLOCK_DEVICE_OPERATIONS
++	.submit_bio                = zvol_submit_bio,
++#endif
+ };
+ 
+ /*
+@@ -1703,7 +1715,11 @@ zvol_alloc(dev_t dev, const char *name)
+ 
+ 	mutex_init(&zv->zv_state_lock, NULL, MUTEX_DEFAULT, NULL);
+ 
++#ifdef HAVE_SUBMIT_BIO_IN_BLOCK_DEVICE_OPERATIONS
++	zv->zv_queue = blk_alloc_queue(NUMA_NO_NODE);
++#else
+ 	zv->zv_queue = blk_generic_alloc_queue(zvol_request, NUMA_NO_NODE);
++#endif
+ 	if (zv->zv_queue == NULL)
+ 		goto out_kmem;
+ 

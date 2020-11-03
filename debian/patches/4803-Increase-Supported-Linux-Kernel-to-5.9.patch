@@ -1,0 +1,28 @@
+From 4b59c195ffbaebfdd5f0971a54613c0ed7c42005 Mon Sep 17 00:00:00 2001
+From: Kjeld Schouten-Lebbing <kjeld@schouten-lebbing.nl>
+Date: Tue, 13 Oct 2020 18:51:13 +0200
+Subject: [PATCH] Increase Supported Linux Kernel to 5.9
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+This increases the Linux kernel version to 5.9 from 5.8
+as most compatibility fixes should already be included.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Reviewed-by: Pavel Snajdr <snajpa@snajpa.net>
+Signed-off-by: Kjeld Schouten-Lebbing <kjeld@schouten-lebbing.nl>
+(backport of upstream commit 4b59c195ffbaebfdd5f0971a54613c0ed7c42005)
+Signed-off-by: Colin Ian King <colin.king@canonical.com>
+Closes #11050
+
+Index: zfs-linux-0.8.4/META
+===================================================================
+--- zfs-linux-0.8.4.orig/META
++++ zfs-linux-0.8.4/META
+@@ -6,5 +6,5 @@ Release:      1
+ Release-Tags:  relext
+ License:       CDDL
+ Author:        OpenZFS on Linux
+-Linux-Maximum: 5.6
++Linux-Maximum: 5.9
+ Linux-Minimum: 2.6.32

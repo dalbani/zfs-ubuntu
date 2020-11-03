@@ -1,0 +1,78 @@
+From 838a2490123a596ac7771894311f17269f47024c Mon Sep 17 00:00:00 2001
+From: Coleman Kane <ckane@colemankane.org>
+Date: Sun, 18 Oct 2020 10:36:12 -0400
+Subject: [PATCH 4805/4807] Linux 5.10 compat: percpu_ref added data member
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+Kernel commit 2b0d3d3e4fcfb brought in some changes to the struct
+percpu_ref structure that moves most of its fields into a member
+struct named "data" of type struct percpu_ref_data. This includes
+the "count" member which is updated by vdev_blkg_tryget(), so update
+this function to chase the API change, and detect it via configure.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Coleman Kane <ckane@colemankane.org>
+Closes #11085
+---
+ config/kernel-percpu.m4         | 26 ++++++++++++++++++++++++++
+ module/os/linux/zfs/vdev_disk.c |  4 ++++
+ 2 files changed, 30 insertions(+)
+
+Index: zfs-linux-0.8.4/config/kernel-percpu.m4
+===================================================================
+--- zfs-linux-0.8.4.orig/config/kernel-percpu.m4
++++ zfs-linux-0.8.4/config/kernel-percpu.m4
+@@ -25,10 +25,36 @@ AC_DEFUN([ZFS_AC_KERNEL_PERCPU_COUNTER_I
+ 	])
+ ])
+ 
++dnl #
++dnl # 5.10 API change,
++dnl # The "count" was moved into ref->data, from ref
++dnl #
++AC_DEFUN([ZFS_AC_KERNEL_SRC_PERCPU_REF_COUNT_IN_DATA], [
++	ZFS_LINUX_TEST_SRC([percpu_ref_count_in_data], [
++		#include <linux/percpu-refcount.h>
++	],[
++		struct percpu_ref_data d;
++
++		atomic_long_set(&d.count, 1L);
++	])
++])
++
++AC_DEFUN([ZFS_AC_KERNEL_PERCPU_REF_COUNT_IN_DATA], [
++	AC_MSG_CHECKING([whether is inside percpu_ref.data])
++	ZFS_LINUX_TEST_RESULT([percpu_ref_count_in_data], [
++		AC_MSG_RESULT(yes)
++		AC_DEFINE(ZFS_PERCPU_REF_COUNT_IN_DATA, 1,
++		    [count is located in percpu_ref.data])
++	],[
++		AC_MSG_RESULT(no)
++	])
++])
+ AC_DEFUN([ZFS_AC_KERNEL_SRC_PERCPU], [
+ 	ZFS_AC_KERNEL_SRC_PERCPU_COUNTER_INIT
++	ZFS_AC_KERNEL_SRC_PERCPU_REF_COUNT_IN_DATA
+ ])
+ 
+ AC_DEFUN([ZFS_AC_KERNEL_PERCPU], [
+ 	ZFS_AC_KERNEL_PERCPU_COUNTER_INIT
++	ZFS_AC_KERNEL_PERCPU_REF_COUNT_IN_DATA
+ ])
+Index: zfs-linux-0.8.4/module/zfs/vdev_disk.c
+===================================================================
+--- zfs-linux-0.8.4.orig/module/zfs/vdev_disk.c
++++ zfs-linux-0.8.4/module/zfs/vdev_disk.c
+@@ -495,7 +495,11 @@ vdev_blkg_tryget(struct blkcg_gq *blkg)
+ 		this_cpu_inc(*count);
+ 		rc = true;
+ 	} else {
++#ifdef ZFS_PERCPU_REF_COUNT_IN_DATA
++		rc = atomic_long_inc_not_zero(&ref->data->count);
++#else
+ 		rc = atomic_long_inc_not_zero(&ref->count);
++#endif
+ 	}
+ 
+ 	rcu_read_unlock_sched();

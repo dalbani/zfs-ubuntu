@@ -1,4 +1,25 @@
 dnl #
+dnl # Detect objtool functionality.
+dnl #
+
+dnl #
+dnl # Kernel 5.10: linux/frame.h was renamed linux/objtool.h
+dnl #
+AC_DEFUN([ZFS_AC_KERNEL_OBJTOOL_HEADER], [
+	AC_MSG_CHECKING([whether objtool header is available])
+	ZFS_LINUX_TRY_COMPILE([
+		#include <linux/objtool.h>
+	],[
+	],[
+		AC_DEFINE(HAVE_KERNEL_OBJTOOL_HEADER, 1,
+		    [kernel has linux/objtool.h])
+		AC_MSG_RESULT(linux/objtool.h)
+	],[
+		AC_MSG_RESULT(linux/frame.h)
+	])
+])
+
+dnl #
 dnl # Check for objtool support.
 dnl #
 AC_DEFUN([ZFS_AC_KERNEL_SRC_OBJTOOL], [

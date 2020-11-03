@@ -1,0 +1,71 @@
+From 8c7d604c62bf621c11faf3abe64cfa94bd12b45b Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Mon, 2 Nov 2020 21:39:50 +0000
+Subject: [PATCH 4804/4807] Linux 5.10 compat: frame.h renamed objtool.h
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+In Linux 5.10 the linux/frame.h header was renamed linux/objtool.h.
+Add a configure check to detect and use the correctly named header.
+
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #11085
+
+Index: zfs-linux-0.8.4/config/kernel-objtool.m4
+===================================================================
+--- zfs-linux-0.8.4.orig/config/kernel-objtool.m4
++++ zfs-linux-0.8.4/config/kernel-objtool.m4
+@@ -1,4 +1,25 @@
+ dnl #
++dnl # Detect objtool functionality.
++dnl #
++
++dnl #
++dnl # Kernel 5.10: linux/frame.h was renamed linux/objtool.h
++dnl #
++AC_DEFUN([ZFS_AC_KERNEL_OBJTOOL_HEADER], [
++	AC_MSG_CHECKING([whether objtool header is available])
++	ZFS_LINUX_TRY_COMPILE([
++		#include <linux/objtool.h>
++	],[
++	],[
++		AC_DEFINE(HAVE_KERNEL_OBJTOOL_HEADER, 1,
++		    [kernel has linux/objtool.h])
++		AC_MSG_RESULT(linux/objtool.h)
++	],[
++		AC_MSG_RESULT(linux/frame.h)
++	])
++])
++
++dnl #
+ dnl # Check for objtool support.
+ dnl #
+ AC_DEFUN([ZFS_AC_KERNEL_SRC_OBJTOOL], [
+Index: zfs-linux-0.8.4/config/kernel.m4
+===================================================================
+--- zfs-linux-0.8.4.orig/config/kernel.m4
++++ zfs-linux-0.8.4/config/kernel.m4
+@@ -12,6 +12,7 @@ AC_DEFUN([ZFS_AC_CONFIG_KERNEL], [
+ 
+ 	dnl # Sequential ZFS_LINUX_TRY_COMPILE tests
+ 	ZFS_AC_KERNEL_FPU_HEADER
++	ZFS_AC_KERNEL_OBJTOOL_HEADER
+ 	ZFS_AC_KERNEL_WAIT_QUEUE_ENTRY_T
+ 	ZFS_AC_KERNEL_MISC_MINOR
+ 	ZFS_AC_KERNEL_DECLARE_EVENT_CLASS
+Index: zfs-linux-0.8.4/include/sys/frame.h
+===================================================================
+--- zfs-linux-0.8.4.orig/include/sys/frame.h
++++ zfs-linux-0.8.4/include/sys/frame.h
+@@ -24,7 +24,11 @@ extern "C" {
+ #endif
+ 
+ #if defined(__KERNEL__) && defined(HAVE_STACK_FRAME_NON_STANDARD)
++#if defined(HAVE_KERNEL_OBJTOOL_HEADER)
++#include <linux/objtool.h>
++#else
+ #include <linux/frame.h>
++#endif
+ #else
+ #define	STACK_FRAME_NON_STANDARD(func)
+ #endif

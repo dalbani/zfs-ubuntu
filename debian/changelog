@@ -1,3 +1,30 @@
+zfs-linux (0.8.4-1ubuntu13) hirsute; urgency=medium
+
+  * Add Linux 5.9 compat fixes (LP: #1899826)
+    - 4800-Linux-5.9-compat-add-linux-blkdev.h-include.patch
+      include blkdev.h in various sources
+    - 4801-Linux-5.9-compat-NR_SLAB_RECLAIMABLE.patch
+      deprecate some older page free stats for arc free page calculation
+    - 4802-Linux-5.9-compat-make_request_fn-replaced-with-submi.patch
+      API change for block allocation
+    - 4805-Increase-Supported-Linux-Kernel-to-5.9.patch
+      allows driver to be built against 5.9
+  * Add Linux 5.10 compat fixes
+    - 4710-Use-percpu_counter-for-obj_alloc-counter-of-Linux-ba.patch
+      prerequisite for 4804-Linux-5.10-compat-frame.h-renamed-objtool.h.patch
+    - 4720-Linux-5.7-compat-Include-linux-sched.h-in-spl-sys-mu.patch
+      prerequisite for next set of patches
+    - 4804-Linux-5.10-compat-frame.h-renamed-objtool.h.patch
+      rename check of linux/frame.h to linux/frame.h
+    - 4805-Linux-5.10-compat-percpu_ref-added-data-member.patch
+      API check to the percpu_ref structure
+    - 4806-Linux-5.10-compat-check_disk_change-removed.patch
+      check_disk_change removed, functionality moved to zfs_check_media_change
+    - 4807-Linux-5.10-compat-revalidate_disk_size-added.patch
+      use revalidate_disk_size where necessary
+
+ -- Colin Ian King <colin.king@canonical.com>  Tue, 3 Nov 2020 12:22:22 +0000
+
 zfs-linux (0.8.4-1ubuntu12) hirsute; urgency=medium
 
   * No-change rebuild to build with python3.9 as supported.
