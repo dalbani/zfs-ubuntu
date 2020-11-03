@@ -1,0 +1,70 @@
+From 1823c8fe6a4a20971463e9b51615dad412aea9a9 Mon Sep 17 00:00:00 2001
+From: Coleman Kane <ckane@colemankane.org>
+Date: Sun, 9 Aug 2020 12:03:03 -0400
+Subject: [PATCH] Linux 5.9 compat: add linux/blkdev.h include
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+Many of the block device operations (often functions with bdev in
+the name) were moved into linux/blkdev.h from linux/fs.h. Seems
+that this header is already included where needed in the code, but
+in the autoconf tests it was missing causing false negatives. This
+commit has those tests include linux/fs.h (old location) and now
+also linux/blkdev.h (new locations).
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Coleman Kane <ckane@colemankane.org>
+(backport of upstream commit 1823c8fe6a4a20971463e9b51615dad412aea9a9)
+Signed-off-by: Colin Ian King <colin.king@canonical.com>
+Closes #10696
+
+---
+
+Index: zfs-linux-0.8.4/config/kernel-blkdev-get-by-path.m4
+===================================================================
+--- zfs-linux-0.8.4.orig/config/kernel-blkdev-get-by-path.m4
++++ zfs-linux-0.8.4/config/kernel-blkdev-get-by-path.m4
+@@ -6,6 +6,7 @@ dnl #
+ AC_DEFUN([ZFS_AC_KERNEL_SRC_BLKDEV_GET_BY_PATH], [
+ 	ZFS_LINUX_TEST_SRC([blkdev_get_by_path], [
+ 		#include <linux/fs.h>
++		#include <linux/blkdev.h>
+ 	], [
+ 		blkdev_get_by_path(NULL, 0, NULL);
+ 	])
+Index: zfs-linux-0.8.4/config/kernel-blkdev-reread-part.m4
+===================================================================
+--- zfs-linux-0.8.4.orig/config/kernel-blkdev-reread-part.m4
++++ zfs-linux-0.8.4/config/kernel-blkdev-reread-part.m4
+@@ -5,6 +5,7 @@ dnl #
+ AC_DEFUN([ZFS_AC_KERNEL_SRC_BLKDEV_REREAD_PART], [
+ 	ZFS_LINUX_TEST_SRC([blkdev_reread_part], [
+ 		#include <linux/fs.h>
++		#include <linux/blkdev.h>
+ 	], [
+ 		struct block_device *bdev = NULL;
+ 		int error;
+Index: zfs-linux-0.8.4/config/kernel-invalidate-bdev-args.m4
+===================================================================
+--- zfs-linux-0.8.4.orig/config/kernel-invalidate-bdev-args.m4
++++ zfs-linux-0.8.4/config/kernel-invalidate-bdev-args.m4
+@@ -5,6 +5,7 @@ dnl #
+ AC_DEFUN([ZFS_AC_KERNEL_SRC_INVALIDATE_BDEV], [
+ 	ZFS_LINUX_TEST_SRC([invalidate_bdev], [
+ 		#include <linux/buffer_head.h>
++		#include <linux/blkdev.h>
+ 	],[
+ 		struct block_device *bdev = NULL;
+ 		invalidate_bdev(bdev);
+Index: zfs-linux-0.8.4/config/kernel-lookup-bdev.m4
+===================================================================
+--- zfs-linux-0.8.4.orig/config/kernel-lookup-bdev.m4
++++ zfs-linux-0.8.4/config/kernel-lookup-bdev.m4
+@@ -5,6 +5,7 @@ dnl #
+ AC_DEFUN([ZFS_AC_KERNEL_SRC_LOOKUP_BDEV], [
+ 	ZFS_LINUX_TEST_SRC([lookup_bdev_1arg], [
+ 		#include <linux/fs.h>
++		#include <linux/blkdev.h>
+ 	], [
+ 		lookup_bdev(NULL);
+ 	])

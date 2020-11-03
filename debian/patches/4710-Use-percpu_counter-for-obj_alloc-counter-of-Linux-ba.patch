@@ -1,0 +1,264 @@
+From ec1fea4516ac2f0c08d31d6308929298d1b281d0 Mon Sep 17 00:00:00 2001
+From: Serapheim Dimitropoulos <serapheim@delphix.com>
+Date: Fri, 26 Jun 2020 18:06:50 -0700
+Subject: [PATCH] Use percpu_counter for obj_alloc counter of Linux-backed
+ caches
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+A previous commit enabled the tracking of object allocations
+in Linux-backed caches from the SPL layer for debuggability.
+The commit is: 9a170fc6fe54f1e852b6c39630fe5ef2bbd97c16
+
+Unfortunately, it also introduced minor performance regressions
+that were highlighted by the ZFS perf test-suite. Within Delphix
+we found that the regression would be from -1%, all the way up
+to -8% for some workloads.
+
+This commit brings performance back up to par by creating a
+separate counter for those caches and making it a percpu in
+order to avoid lock-contention.
+
+The initial performance testing was done by myself, and the
+final round was conducted by @tonynguien who was also the one
+that discovered the regression and highlighted the culprit.
+
+Reviewed-by: Matt Ahrens <matt@delphix.com>
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Serapheim Dimitropoulos <serapheim@delphix.com>
+Closes #10397
+---
+ config/kernel-percpu.m4                       | 34 ++++++++++++++
+ config/kernel.m4                              |  2 +
+ include/os/linux/kernel/linux/Makefile.am     |  1 +
+ include/os/linux/kernel/linux/percpu_compat.h | 44 +++++++++++++++++++
+ include/os/linux/spl/sys/kmem_cache.h         |  1 +
+ module/os/linux/spl/spl-kmem-cache.c          | 20 ++++++---
+ module/os/linux/spl/spl-proc.c                |  6 ++-
+ 7 files changed, 100 insertions(+), 8 deletions(-)
+ create mode 100644 config/kernel-percpu.m4
+ create mode 100644 include/os/linux/kernel/linux/percpu_compat.h
+
+Index: zfs-linux-0.8.4/config/kernel-percpu.m4
+===================================================================
+--- /dev/null
++++ zfs-linux-0.8.4/config/kernel-percpu.m4
+@@ -0,0 +1,34 @@
++dnl #
++dnl # 3.18 API change,
++dnl # The function percpu_counter_init now must be passed a GFP mask.
++dnl #
++AC_DEFUN([ZFS_AC_KERNEL_SRC_PERCPU_COUNTER_INIT], [
++	ZFS_LINUX_TEST_SRC([percpu_counter_init_with_gfp], [
++		#include <linux/gfp.h>
++		#include <linux/percpu_counter.h>
++	],[
++		struct percpu_counter counter;
++		int error;
++
++		error = percpu_counter_init(&counter, 0, GFP_KERNEL);
++	])
++])
++
++AC_DEFUN([ZFS_AC_KERNEL_PERCPU_COUNTER_INIT], [
++	AC_MSG_CHECKING([whether percpu_counter_init() wants gfp_t])
++	ZFS_LINUX_TEST_RESULT([percpu_counter_init_with_gfp], [
++		AC_MSG_RESULT(yes)
++		AC_DEFINE(HAVE_PERCPU_COUNTER_INIT_WITH_GFP, 1,
++		    [percpu_counter_init() wants gfp_t])
++	],[
++		AC_MSG_RESULT(no)
++	])
++])
++
++AC_DEFUN([ZFS_AC_KERNEL_SRC_PERCPU], [
++	ZFS_AC_KERNEL_SRC_PERCPU_COUNTER_INIT
++])
++
++AC_DEFUN([ZFS_AC_KERNEL_PERCPU], [
++	ZFS_AC_KERNEL_PERCPU_COUNTER_INIT
++])
+Index: zfs-linux-0.8.4/config/kernel.m4
+===================================================================
+--- zfs-linux-0.8.4.orig/config/kernel.m4
++++ zfs-linux-0.8.4/config/kernel.m4
+@@ -143,6 +143,7 @@ AC_DEFUN([ZFS_AC_KERNEL_TEST_SRC], [
+ 	ZFS_AC_KERNEL_SRC_TOTALRAM_PAGES_FUNC
+ 	ZFS_AC_KERNEL_SRC_TOTALHIGH_PAGES
+ 	ZFS_AC_KERNEL_SRC_KSTRTOUL
++	ZFS_AC_KERNEL_SRC_PERCPU
+ 
+ 	AC_MSG_CHECKING([for available kernel interfaces])
+ 	ZFS_LINUX_TEST_COMPILE_ALL([kabi])
+@@ -262,6 +263,7 @@ AC_DEFUN([ZFS_AC_KERNEL_TEST_RESULT], [
+ 	ZFS_AC_KERNEL_TOTALRAM_PAGES_FUNC
+ 	ZFS_AC_KERNEL_TOTALHIGH_PAGES
+ 	ZFS_AC_KERNEL_KSTRTOUL
++	ZFS_AC_KERNEL_PERCPU
+ ])
+ 
+ dnl #
+Index: zfs-linux-0.8.4/include/linux/percpu_compat.h
+===================================================================
+--- /dev/null
++++ zfs-linux-0.8.4/include/linux/percpu_compat.h
+@@ -0,0 +1,44 @@
++/*
++ * CDDL HEADER START
++ *
++ * The contents of this file are subject to the terms of the
++ * Common Development and Distribution License (the "License").
++ * You may not use this file except in compliance with the License.
++ *
++ * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
++ * or http://www.opensolaris.org/os/licensing.
++ * See the License for the specific language governing permissions
++ * and limitations under the License.
++ *
++ * When distributing Covered Code, include this CDDL HEADER in each
++ * file and include the License file at usr/src/OPENSOLARIS.LICENSE.
++ * If applicable, add the following below this CDDL HEADER, with the
++ * fields enclosed by brackets "[]" replaced with your own identifying
++ * information: Portions Copyright [yyyy] [name of copyright owner]
++ *
++ * CDDL HEADER END
++ */
++
++/*
++ * Copyright (c) 2020 by Delphix. All rights reserved.
++ */
++
++#ifndef _ZFS_PERCPU_H
++#define	_ZFS_PERCPU_H
++
++#include <linux/percpu_counter.h>
++
++/*
++ * 3.18 API change,
++ * percpu_counter_init() now must be passed a gfp mask which will be
++ * used for the dynamic allocation of the actual counter.
++ */
++#ifdef HAVE_PERCPU_COUNTER_INIT_WITH_GFP
++#define	percpu_counter_init_common(counter, n, gfp) \
++	percpu_counter_init(counter, n, gfp)
++#else
++#define	percpu_counter_init_common(counter, n, gfp) \
++	percpu_counter_init(counter, n)
++#endif
++
++#endif /* _ZFS_PERCPU_H */
+Index: zfs-linux-0.8.4/include/spl/sys/kmem_cache.h
+===================================================================
+--- zfs-linux-0.8.4.orig/include/spl/sys/kmem_cache.h
++++ zfs-linux-0.8.4/include/spl/sys/kmem_cache.h
+@@ -200,6 +200,7 @@ typedef struct spl_kmem_cache {
+ 	uint64_t		skc_slab_max;	/* Slab max historic  */
+ 	uint64_t		skc_obj_total;	/* Obj total current */
+ 	uint64_t		skc_obj_alloc;	/* Obj alloc current */
++	struct percpu_counter	skc_linux_alloc;   /* Linux-backed Obj alloc  */
+ 	uint64_t		skc_obj_max;	/* Obj max historic */
+ 	uint64_t		skc_obj_deadlock;  /* Obj emergency deadlocks */
+ 	uint64_t		skc_obj_emergency; /* Obj emergency current */
+Index: zfs-linux-0.8.4/module/spl/spl-kmem-cache.c
+===================================================================
+--- zfs-linux-0.8.4.orig/module/spl/spl-kmem-cache.c
++++ zfs-linux-0.8.4/module/spl/spl-kmem-cache.c
+@@ -31,6 +31,7 @@
+ #include <sys/wait.h>
+ #include <linux/slab.h>
+ #include <linux/swap.h>
++#include <linux/percpu_compat.h>
+ #include <linux/prefetch.h>
+ 
+ /*
+@@ -933,6 +934,13 @@ spl_kmem_cache_create(char *name, size_t
+ 	skc->skc_obj_emergency = 0;
+ 	skc->skc_obj_emergency_max = 0;
+ 
++	rc = percpu_counter_init_common(&skc->skc_linux_alloc, 0,
++	    GFP_KERNEL);
++	if (rc != 0) {
++		kfree(skc);
++		return (NULL);
++	}
++
+ 	/*
+ 	 * Verify the requested alignment restriction is sane.
+ 	 */
+@@ -1038,6 +1046,7 @@ spl_kmem_cache_create(char *name, size_t
+ 	return (skc);
+ out:
+ 	kfree(skc->skc_name);
++	percpu_counter_destroy(&skc->skc_linux_alloc);
+ 	kfree(skc);
+ 	return (NULL);
+ }
+@@ -1108,6 +1117,9 @@ spl_kmem_cache_destroy(spl_kmem_cache_t
+ 	ASSERT3U(skc->skc_obj_emergency, ==, 0);
+ 	ASSERT(list_empty(&skc->skc_complete_list));
+ 
++	ASSERT3U(percpu_counter_sum(&skc->skc_linux_alloc), ==, 0);
++	percpu_counter_destroy(&skc->skc_linux_alloc);
++
+ 	spin_unlock(&skc->skc_lock);
+ 
+ 	kfree(skc->skc_name);
+@@ -1464,9 +1476,7 @@ spl_kmem_cache_alloc(spl_kmem_cache_t *s
+ 			 * how many objects we've allocated in it for
+ 			 * better debuggability.
+ 			 */
+-			spin_lock(&skc->skc_lock);
+-			skc->skc_obj_alloc++;
+-			spin_unlock(&skc->skc_lock);
++			percpu_counter_inc(&skc->skc_linux_alloc);
+ 		}
+ 		goto ret;
+ 	}
+@@ -1541,9 +1551,7 @@ spl_kmem_cache_free(spl_kmem_cache_t *sk
+ 	 */
+ 	if (skc->skc_flags & KMC_SLAB) {
+ 		kmem_cache_free(skc->skc_linux_cache, obj);
+-		spin_lock(&skc->skc_lock);
+-		skc->skc_obj_alloc--;
+-		spin_unlock(&skc->skc_lock);
++		percpu_counter_dec(&skc->skc_linux_alloc);
+ 		return;
+ 	}
+ 
+Index: zfs-linux-0.8.4/module/spl/spl-proc.c
+===================================================================
+--- zfs-linux-0.8.4.orig/module/spl/spl-proc.c
++++ zfs-linux-0.8.4/module/spl/spl-proc.c
+@@ -446,16 +446,18 @@ slab_seq_show(struct seq_file *f, void *
+ 		 * the underlying Linux cache please refer to /proc/slabinfo.
+ 		 */
+ 		spin_lock(&skc->skc_lock);
++		uint64_t objs_allocated =
++		    percpu_counter_sum(&skc->skc_linux_alloc);
+ 		seq_printf(f, "%-36s  ", skc->skc_name);
+ 		seq_printf(f, "0x%05lx %9s %9lu %8s %8u  "
+ 		    "%5s %5s %5s  %5s %5lu %5s  %5s %5s %5s\n",
+ 		    (long unsigned)skc->skc_flags,
+ 		    "-",
+-		    (long unsigned)(skc->skc_obj_size * skc->skc_obj_alloc),
++		    (long unsigned)(skc->skc_obj_size * objs_allocated),
+ 		    "-",
+ 		    (unsigned)skc->skc_obj_size,
+ 		    "-", "-", "-", "-",
+-		    (long unsigned)skc->skc_obj_alloc,
++		    (long unsigned)objs_allocated,
+ 		    "-", "-", "-", "-");
+ 		spin_unlock(&skc->skc_lock);
+ 		return (0);
+Index: zfs-linux-0.8.4/include/linux/Makefile.am
+===================================================================
+--- zfs-linux-0.8.4.orig/include/linux/Makefile.am
++++ zfs-linux-0.8.4/include/linux/Makefile.am
+@@ -7,6 +7,7 @@ KERNEL_H = \
+ 	$(top_srcdir)/include/linux/blkdev_compat.h \
+ 	$(top_srcdir)/include/linux/utsname_compat.h \
+ 	$(top_srcdir)/include/linux/kmap_compat.h \
++        $(top_srcdir)/include/linux/percpu_compat.h \
+ 	$(top_srcdir)/include/linux/simd.h \
+ 	$(top_srcdir)/include/linux/simd_x86.h \
+ 	$(top_srcdir)/include/linux/simd_aarch64.h \

@@ -1,0 +1,190 @@
+From ae15f1c1d88d85cc1af8152559d50a4baf5e50c5 Mon Sep 17 00:00:00 2001
+From: Coleman Kane <ckane@colemankane.org>
+Date: Sun, 18 Oct 2020 12:54:21 -0400
+Subject: [PATCH 4806/4807] Linux 5.10 compat: check_disk_change() removed
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+Kernel 5.10 removed check_disk_change() in favor of callers using
+the faster bdev_check_media_change() instead, and explicitly forcing
+bdev revalidation when they desire that behavior. To preserve prior
+behavior, I have wrapped this into a zfs_check_media_change() macro
+that calls an inline function for the new API that mimics the old
+behavior when check_disk_change() doesn't exist, and just calls
+check_disk_change() if it exists.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Coleman Kane <ckane@colemankane.org>
+Closes #11085
+---
+ config/kernel-blkdev.m4                       | 57 +++++++++++++++++++
+ include/os/linux/kernel/linux/blkdev_compat.h | 36 ++++++++++++
+ module/os/linux/zfs/vdev_disk.c               |  2 +-
+ module/os/linux/zfs/zvol_os.c                 |  2 +-
+ 4 files changed, 95 insertions(+), 2 deletions(-)
+
+Index: zfs-linux-0.8.4/include/linux/blkdev_compat.h
+===================================================================
+--- zfs-linux-0.8.4.orig/include/linux/blkdev_compat.h
++++ zfs-linux-0.8.4/include/linux/blkdev_compat.h
+@@ -371,12 +371,48 @@ bio_set_bi_error(struct bio *bio, int er
+  *
+  * For older kernels trigger a re-reading of the partition table by calling
+  * check_disk_change() which calls flush_disk() to invalidate the device.
++ *
++ * For newer kernels (as of 5.10), bdev_check_media_chage is used, in favor of
++ * check_disk_change(), with the modification that invalidation is no longer
++ * forced.
+  */
++#ifdef HAVE_CHECK_DISK_CHANGE
++#define	zfs_check_media_change(bdev)	check_disk_change(bdev)
+ #ifdef HAVE_BLKDEV_REREAD_PART
+ #define	vdev_bdev_reread_part(bdev)	blkdev_reread_part(bdev)
+ #else
+ #define	vdev_bdev_reread_part(bdev)	check_disk_change(bdev)
+ #endif /* HAVE_BLKDEV_REREAD_PART */
++#else
++#ifdef HAVE_BDEV_CHECK_MEDIA_CHANGE
++static inline int
++zfs_check_media_change(struct block_device *bdev)
++{
++	struct gendisk *gd = bdev->bd_disk;
++	const struct block_device_operations *bdo = gd->fops;
++
++	if (!bdev_check_media_change(bdev))
++		return (0);
++
++	/*
++	 * Force revalidation, to mimic the old behavior of
++	 * check_disk_change()
++	 */
++	if (bdo->revalidate_disk)
++		bdo->revalidate_disk(gd);
++
++	return (0);
++}
++#define	vdev_bdev_reread_part(bdev)	zfs_check_media_change(bdev)
++#else
++/*
++ * This is encountered if check_disk_change() and bdev_check_media_change()
++ * are not available in the kernel - likely due to an API change that needs
++ * to be chased down.
++ */
++#error "Unsupported kernel: no usable disk change check"
++#endif /* HAVE_BDEV_CHECK_MEDIA_CHANGE */
++#endif /* HAVE_CHECK_DISK_CHANGE */
+ 
+ /*
+  * 2.6.22 API change
+Index: zfs-linux-0.8.4/config/kernel-blkdev.m4
+===================================================================
+--- /dev/null
++++ zfs-linux-0.8.4/config/kernel-blkdev.m4
+@@ -0,0 +1,61 @@
++dnl #
++dnl # check_disk_change() was removed in 5.10
++dnl #
++AC_DEFUN([ZFS_AC_KERNEL_SRC_BLKDEV_CHECK_DISK_CHANGE], [
++	ZFS_LINUX_TEST_SRC([check_disk_change], [
++		#include <linux/fs.h>
++		#include <linux/blkdev.h>
++	], [
++		struct block_device *bdev = NULL;
++		bool error;
++
++		error = check_disk_change(bdev);
++	])
++])
++
++AC_DEFUN([ZFS_AC_KERNEL_BLKDEV_CHECK_DISK_CHANGE], [
++	AC_MSG_CHECKING([whether check_disk_change() exists])
++	ZFS_LINUX_TEST_RESULT([check_disk_change], [
++		AC_MSG_RESULT(yes)
++		AC_DEFINE(HAVE_CHECK_DISK_CHANGE, 1,
++		    [check_disk_change() exists])
++	], [
++		AC_MSG_RESULT(no)
++	])
++])
++dnl #
++dnl # 5.10 API, check_disk_change() is removed, in favor of
++dnl # bdev_check_media_change(), which doesn't force revalidation
++dnl #
++AC_DEFUN([ZFS_AC_KERNEL_SRC_BLKDEV_BDEV_CHECK_MEDIA_CHANGE], [
++	ZFS_LINUX_TEST_SRC([bdev_check_media_change], [
++		#include <linux/fs.h>
++		#include <linux/blkdev.h>
++	], [
++		struct block_device *bdev = NULL;
++		int error;
++
++		error = bdev_check_media_change(bdev);
++	])
++])
++
++AC_DEFUN([ZFS_AC_KERNEL_BLKDEV_BDEV_CHECK_MEDIA_CHANGE], [
++	AC_MSG_CHECKING([whether bdev_disk_changed() exists])
++	ZFS_LINUX_TEST_RESULT([bdev_check_media_change], [
++		AC_MSG_RESULT(yes)
++		AC_DEFINE(HAVE_BDEV_CHECK_MEDIA_CHANGE, 1,
++		    [bdev_check_media_change() exists])
++	], [
++		AC_MSG_RESULT(no)
++	])
++])
++
++AC_DEFUN([ZFS_AC_KERNEL_SRC_BLKDEV], [
++	ZFS_AC_KERNEL_SRC_BLKDEV_CHECK_DISK_CHANGE
++	ZFS_AC_KERNEL_SRC_BLKDEV_BDEV_CHECK_MEDIA_CHANGE
++])
++
++AC_DEFUN([ZFS_AC_KERNEL_BLKDEV], [
++	ZFS_AC_KERNEL_BLKDEV_CHECK_DISK_CHANGE
++        ZFS_AC_KERNEL_BLKDEV_BDEV_CHECK_MEDIA_CHANGE
++])
+Index: zfs-linux-0.8.4/module/zfs/vdev_disk.c
+===================================================================
+--- zfs-linux-0.8.4.orig/module/zfs/vdev_disk.c
++++ zfs-linux-0.8.4/module/zfs/vdev_disk.c
+@@ -844,7 +844,7 @@ vdev_disk_io_done(zio_t *zio)
+ 		vdev_t *v = zio->io_vd;
+ 		vdev_disk_t *vd = v->vdev_tsd;
+ 
+-		if (check_disk_change(vd->vd_bdev)) {
++		if (zfs_check_media_change(vd->vd_bdev)) {
+ 			vdev_bdev_invalidate(vd->vd_bdev);
+ 			v->vdev_remove_wanted = B_TRUE;
+ 			spa_async_request(zio->io_spa, SPA_ASYNC_REMOVE);
+Index: zfs-linux-0.8.4/module/zfs/zvol.c
+===================================================================
+--- zfs-linux-0.8.4.orig/module/zfs/zvol.c
++++ zfs-linux-0.8.4/module/zfs/zvol.c
+@@ -1450,7 +1450,7 @@ zvol_open(struct block_device *bdev, fmo
+ 	if (drop_suspend)
+ 		rw_exit(&zv->zv_suspend_lock);
+ 
+-	check_disk_change(bdev);
++	zfs_check_media_change(bdev);
+ 
+ 	return (0);
+ 
+Index: zfs-linux-0.8.4/config/kernel.m4
+===================================================================
+--- zfs-linux-0.8.4.orig/config/kernel.m4
++++ zfs-linux-0.8.4/config/kernel.m4
+@@ -145,6 +145,7 @@ AC_DEFUN([ZFS_AC_KERNEL_TEST_SRC], [
+ 	ZFS_AC_KERNEL_SRC_TOTALHIGH_PAGES
+ 	ZFS_AC_KERNEL_SRC_KSTRTOUL
+ 	ZFS_AC_KERNEL_SRC_PERCPU
++	ZFS_AC_KERNEL_SRC_BLKDEV_CHECK_DISK_CHANGE
+ 
+ 	AC_MSG_CHECKING([for available kernel interfaces])
+ 	ZFS_LINUX_TEST_COMPILE_ALL([kabi])
+@@ -265,6 +266,7 @@ AC_DEFUN([ZFS_AC_KERNEL_TEST_RESULT], [
+ 	ZFS_AC_KERNEL_TOTALHIGH_PAGES
+ 	ZFS_AC_KERNEL_KSTRTOUL
+ 	ZFS_AC_KERNEL_PERCPU
++	ZFS_AC_KERNEL_BLKDEV_CHECK_DISK_CHANGE
+ ])
+ 
+ dnl #

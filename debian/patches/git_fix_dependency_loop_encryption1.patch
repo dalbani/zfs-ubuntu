@@ -39,7 +39,7 @@ Index: zfs-linux-0.8.4/etc/systemd/system-generators/zfs-mount-generator.in
    p_mountpoint="${2}"
    p_canmount="${3}"
    p_atime="${4}"
-@@ -141,6 +143,18 @@ process_line() {
+@@ -145,6 +147,18 @@ process_line() {
      requiredmounts="RequiresMountsFor=${p_systemd_requiresmountsfor}"
    fi
  
@@ -69,4 +69,4 @@ Index: zfs-linux-0.8.4/etc/systemd/system/zfs-mount.service.in
 -Before=systemd-random-seed.service
  After=zfs-load-module.service
  ConditionPathExists=/sys/module/zfs
-
+ 
