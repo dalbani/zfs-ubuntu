@@ -1,3 +1,11 @@
+zfs-linux (0.8.3-1ubuntu12.5) focal; urgency=medium
+
+  * Prevent build of the zfs-dkms binary package for kernels later than 5.4.
+    If that is required, one should use the zfs-dkms package of a later series
+    (like it is done for built-in modules of Ubuntu kernels). (LP: #1902701)
+
+ -- Stefan Bader <stefan.bader@canonical.com>  Tue, 03 Nov 2020 18:05:38 +0100
+
 zfs-linux (0.8.3-1ubuntu12.4) focal; urgency=medium
 
   * Fix zfs-dkms build on arm64 with PREEMPTION and BLK_CGROUP (LP: #1892001)
