@@ -396,5 +396,5 @@ Index: zfs-linux-0.8.4/contrib/initramfs/scripts/zfs
 +
 +uid()
 +{
-+	dd if=/dev/urandom of=/dev/stdout bs=1 count=100 2>/dev/null | tr -dc 'a-z0-9' | cut -c-6
++	grep -a -m10 -E "\*" /dev/urandom 2>/dev/null | tr -dc 'a-z0-9' | cut -c-6
 +}
