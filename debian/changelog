@@ -1,3 +1,12 @@
+zfs-linux (0.8.4-1ubuntu14) hirsute; urgency=medium
+
+  [ Didier Roche ]
+  [ Jean-Baptiste Lallement ]
+  * Generate clone uuid without dd which is flagged as having an executable
+    stack. Thanks Usarin Heininga for the patch (LP: #1894329)
+
+ -- Jean-Baptiste Lallement <jean-baptiste.lallement@ubuntu.com>  Mon, 09 Nov 2020 10:25:57 +0100
+
 zfs-linux (0.8.4-1ubuntu13) hirsute; urgency=medium
 
   * Add Linux 5.9 compat fixes (LP: #1899826)
