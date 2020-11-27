@@ -1,3 +1,10 @@
+zfs-linux (0.8.4-1ubuntu15) hirsute; urgency=medium
+  
+  * Fix null pointer dereference during zfs send (LP: #1900889) 
+    - 4701-enable-ARC-FILL-LOCKED-flag.patch 
+
+ -- Colin Ian King <colin.king@canonical.com>  Fri, 27 Nov 2020 12:22:22 +0000
+
 zfs-linux (0.8.4-1ubuntu14) hirsute; urgency=medium
 
   [ Didier Roche ]
