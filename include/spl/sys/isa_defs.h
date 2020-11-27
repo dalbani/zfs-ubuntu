@@ -192,10 +192,24 @@
  */
 #define	_ALIGNMENT_REQUIRED	1
 
+#elif defined(__riscv)
+
+#define	_LITTLE_ENDIAN
+#define	_SUNOS_VTOC_16
+
+#ifndef _LP64
+#define	_ILP32
+#endif
+
+/*
+ * Illumos doesn't define _ALIGNMENT_REQUIRED for RISC-V, so default to 1
+ * out of paranoia.
+ */
+
 #else
 /*
  * Currently supported:
- * x86_64, i386, arm, powerpc, s390, sparc, and mips
+ * x86_64, i386, arm, powerpc, s390, sparc, mips and risc-v
  */
 #error "Unsupported ISA type"
 #endif
