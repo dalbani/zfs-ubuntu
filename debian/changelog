@@ -1,3 +1,11 @@
+zfs-linux (0.8.4-1ubuntu16) hirsute; urgency=medium
+
+  * fix potential user-space double free when running "zfs mount -a"
+    (LP: #1902588)
+   - 4702-Revert-Let-zfs-mount-all-tolerate-in-progress-mounts.patch
+
+ -- Andrea Righi <andrea.righi@canonical.com>  Fri, 27 Nov 2020 18:40:01 +0000
+
 zfs-linux (0.8.4-1ubuntu15) hirsute; urgency=medium
   
   * Fix null pointer dereference during zfs send (LP: #1900889) 
