@@ -26,6 +26,7 @@
 #define	_SPL_LIST_H
 
 #include <sys/types.h>
+#include <sys/debug.h>
 #include <linux/list.h>
 
 /*
