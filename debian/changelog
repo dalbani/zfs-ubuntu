@@ -1,3 +1,17 @@
+zfs-linux (0.8.3-1ubuntu12.6) focal; urgency=medium
+
+  [ Didier Roche ]
+  [ Jean-Baptiste Lallement ]
+  * Generate clone uuid without dd which is flagged as having an executable
+    stack. Thanks Usarin Heininga for the patch (LP: #1894329)
+
+  [ Andrea Righi ]
+  * fix potential user-space double free when running "zfs mount -a"
+    (LP: #1902588)
+    - 4702-Revert-Let-zfs-mount-all-tolerate-in-progress-mounts.patch
+
+ -- Colin Ian King <colin.king@canonical.com>  Mon, 30 Nov 2020 19:00:00 +0000
+
 zfs-linux (0.8.3-1ubuntu12.5) focal; urgency=medium
 
   * Prevent build of the zfs-dkms binary package for kernels later than 5.4.

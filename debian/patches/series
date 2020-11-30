@@ -22,3 +22,4 @@ zfs-mount-container-start.patch
 4610-ICP-Improve-AES-GCM-performance.patch
 4620-zfs-vol-wait-fix-locked-encrypted-vols.patch
 4700-Fix-DKMS-build-on-arm64-with-PREEMPTION-and-BLK_CGRO.patch
+4702-Revert-Let-zfs-mount-all-tolerate-in-progress-mounts.patch
