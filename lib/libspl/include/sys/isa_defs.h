@@ -192,10 +192,19 @@ extern "C" {
 
 #define	_SUNOS_VTOC_16
 
+#elif defined(__riscv)
+
+#define	_LITTLE_ENDIAN
+#define	_SUNOS_VTOC_16
+
+#ifndef _LP64
+#define	_ILP32
+#endif
+
 #else
 /*
  * Currently supported:
- * x86_64, i386, arm, powerpc, s390, sparc, and mips
+ * x86_64, i386, arm, powerpc, s390, sparc, and mips, riscv64
  */
 #error "Unsupported ISA type"
 #endif
