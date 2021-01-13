@@ -1,3 +1,11 @@
+zfs-linux (2.0.1-1ubuntu1) hirsute; urgency=medium
+
+  * Enable Ubuntu specific patches
+  * Minor modifications to debian/control for Ubuntu zfs modules that
+    are included the kernel package.
+
+ -- Colin Ian King <colin.king@canonical.com>  Wed, 13 Jan 2021 11:14:23 +0000
+
 zfs-linux (2.0.1-1) unstable; urgency=medium
 
   * Upload to unstable.
