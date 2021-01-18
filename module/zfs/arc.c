@@ -2181,7 +2181,7 @@ arc_untransform(arc_buf_t *buf, spa_t *spa, const zbookmark_phys_t *zb,
     boolean_t in_place)
 {
 	int ret;
-	arc_fill_flags_t flags = 0;
+	arc_fill_flags_t flags = ARC_FILL_LOCKED;
 
 	if (in_place)
 		flags |= ARC_FILL_IN_PLACE;
