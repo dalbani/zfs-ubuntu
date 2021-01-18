@@ -1,3 +1,11 @@
+zfs-linux (2.0.1-1ubuntu2) hirsute; urgency=medium
+
+  * Debian/tests: Move control.ubuntu to control
+    - kernel ADT tests handle the driver side of testing so just
+      use the standard smoke tests
+
+ -- Colin Ian King <colin.king@canonical.com>  Mon, 18 Jan 2021 12:55:53 +0000
+
 zfs-linux (2.0.1-1ubuntu1) hirsute; urgency=medium
 
   * Enable Ubuntu specific patches
