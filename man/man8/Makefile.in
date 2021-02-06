@@ -601,7 +601,6 @@ SUBSTFILES = $(nodist_man_MANS)
 CLEANFILES = $(SUBSTFILES)
 EXTRA_DIST = $(SUBSTFILES:=.in)
 dist_man_MANS = \
-	arcstat.8 \
 	fsck.zfs.8 \
 	mount.zfs.8 \
 	vdev_id.8 \
