@@ -1,3 +1,14 @@
+zfs-linux (2.0.2-1ubuntu1) hirsute; urgency=medium
+
+  * Enable Ubuntu specific patches
+  * Minor modifications to debian/control for Ubuntu zfs modules that
+    are included the kernel package.
+  * Debian/tests: Move control.ubuntu to control
+    - kernel ADT tests handle the driver side of testing so just
+      use the standard smoke tests
+
+ -- Colin Ian King <colin.king@canonical.com>  Fri, 12 Feb 2021 10:14:23 +0000
+
 zfs-linux (2.0.2-1) unstable; urgency=medium
 
   [ Mo Zhou ]
