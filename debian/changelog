@@ -1,3 +1,11 @@
+zfs-linux (0.8.3-1ubuntu12.7) focal; urgency=medium
+
+  * Fix race condition in zfs_iput_async (LP: #1916486)
+    - Upstream ZFS fix 43eaef6de817 ("Fix zrele race in zrele_async that can
+      cause hang")
+
+ -- Heitor Alves de Siqueira <halves@canonical.com>  Thu, 25 Feb 2021 19:48:51 +0000
+
 zfs-linux (0.8.3-1ubuntu12.6) focal; urgency=medium
 
   [ Didier Roche ]
