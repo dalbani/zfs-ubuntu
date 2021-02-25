@@ -1,3 +1,11 @@
+zfs-linux (0.7.5-1ubuntu16.11) bionic; urgency=medium
+
+  * Fix race condition in zfs_iput_async (LP: #1916486)
+    - Upstream ZFS fix 43eaef6de817 ("Fix zrele race in zrele_async that can
+      cause hang")
+
+ -- Heitor Alves de Siqueira <halves@canonical.com>  Thu, 25 Feb 2021 17:20:20 +0000
+
 zfs-linux (0.7.5-1ubuntu16.10) bionic; urgency=medium
 
   * Fix zfs-dkms build on arm64 with PREEMPTION and BLK_CGROUP (LP: #1892001)
