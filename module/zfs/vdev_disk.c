@@ -26,6 +26,8 @@
  * Copyright (c) 2012, 2015 by Delphix. All rights reserved.
  */
 
+#include "zfs_compat.h"
+
 #include <sys/zfs_context.h>
 #include <sys/spa.h>
 #include <sys/vdev_disk.h>
