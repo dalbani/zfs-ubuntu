@@ -1,3 +1,11 @@
+zfs-linux (0.8.4-1ubuntu11.2) groovy; urgency=medium
+
+  * Fix race condition in zfs_iput_async (LP: #1916486)
+    - Upstream ZFS fix 43eaef6de817 ("Fix zrele race in zrele_async that can
+      cause hang")
+
+ -- Heitor Alves de Siqueira <halves@canonical.com>  Thu, 25 Feb 2021 19:53:32 +0000
+
 zfs-linux (0.8.4-1ubuntu11.1) groovy; urgency=medium
 
   [ Didier Roche ]
