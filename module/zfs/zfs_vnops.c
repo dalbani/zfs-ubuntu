@@ -996,11 +996,18 @@ zfs_iput_async(struct inode *ip)
 	ASSERT(atomic_read(&ip->i_count) > 0);
 	ASSERT(os != NULL);
 
-	if (atomic_read(&ip->i_count) == 1)
+	/*
+	 * If decrementing the count would put us at 0, we can't do it inline
+	 * here, because that would be synchronous. Instead, dispatch an iput
+	 * to run later.
+	 *
+	 * For more information on the dangers of a synchronous iput, see the
+	 * header comment of this file.
+	 */
+	if (!atomic_add_unless(&ip->i_count, -1, 1)) {
 		VERIFY(taskq_dispatch(dsl_pool_iput_taskq(dmu_objset_pool(os)),
 		    (task_func_t *)iput, ip, TQ_SLEEP) != TASKQID_INVALID);
-	else
-		iput(ip);
+	}
 }
 
 /* ARGSUSED */
