@@ -20,3 +20,4 @@ zfs-mount-container-start.patch
 4510-silently-ignore-modprobe-failure.patch
 4620-zfs-vol-wait-fix-locked-encrypted-vols.patch
 move-arcstat-1-to-8.patch
+4700-Set-file-mode-during-zfs_write.patch
