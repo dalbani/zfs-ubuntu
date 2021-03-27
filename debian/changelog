@@ -1,3 +1,10 @@
+zfs-linux (2.0.2-1ubuntu5) hirsute; urgency=medium
+
+  * Fix typo in debian/control, fs-zed should be zfs-zed (LP: #1921594)
+    fix zfsutils-linux Recommends.
+
+ -- Colin Ian King <colin.king@canonical.com>  Sat, 27 Mar 2021 22:08:23 +0000
+
 zfs-linux (2.0.2-1ubuntu4) hirsute; urgency=medium
 
   * Fix "PANIC: inode has invalid mode: 0x0" (LP: #1920932)
