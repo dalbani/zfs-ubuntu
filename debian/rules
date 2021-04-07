@@ -130,7 +130,7 @@ override_dh_python3:
 
 override_dh_dkms:
 	'$(CURDIR)/scripts/dkms.mkconf' -n $(NAME) -v $(DEB_VERSION_UPSTREAM) -f '$(CURDIR)/scripts/zfs-dkms.dkms'
-	sed -ie '/^PACKAGE_VERSION/a BUILD_EXCLUSIVE_KERNEL="^(4\.[0-9]+|5\.[01234])\."' \
+	sed -ie '/^PACKAGE_VERSION/a BUILD_EXCLUSIVE_KERNEL="^(4\\.[0-9]+|5\\.[01234])\\."' \
 		'$(CURDIR)/scripts/zfs-dkms.dkms'
 	dh_dkms
 	rm -f '$(CURDIR)/scripts/zfs-dkms.dkms'

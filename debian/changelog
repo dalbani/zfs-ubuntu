@@ -1,3 +1,11 @@
+zfs-linux (0.8.3-1ubuntu12.8) focal; urgency=medium
+
+  * Prevent build of the zfs-dkms binary package for kernels later than 5.4.
+    This is a re-working of the fix for bug #1902701 with the \ escaped
+    so that 5.10+ kernels get detected correctly (LP: #1919252)
+
+ -- Colin Ian King <colin.king@canonical.com>  Wed, 07 Apr 2021 13:44:14 +0100
+
 zfs-linux (0.8.3-1ubuntu12.7) focal; urgency=medium
 
   * Fix race condition in zfs_iput_async (LP: #1916486)
