@@ -1,3 +1,12 @@
+zfs-linux (2.0.3-8ubuntu1) impish; urgency=medium
+
+  * Enable Ubuntu specific debian patches
+  * Add in upstream Linux compat 5.12 patches
+  * Add workaround to PPC GPL licence issue with array mmu_feature_keys[],
+    caused by Linux commit 7613f5a66becfd0e43a0f34de8518695888f5458.
+
+ -- Colin Ian King <colin.king@canonical.com>  Wed, 28 Apr 2021 15:15:23 +0100
+
 zfs-linux (2.0.3-8) unstable; urgency=medium
 
   * Fix a typo in autopkgtest-dependency header package name.
