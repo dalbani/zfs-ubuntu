@@ -1,3 +1,9 @@
+zfs-linux (0.8.3-1ubuntu12.9) focal; urgency=medium
+
+  * No change rebuild in security pocket. LP: #1914279.
+
+ -- Dimitri John Ledkov <xnox@ubuntu.com>  Thu, 29 Apr 2021 16:09:45 +0100
+
 zfs-linux (0.8.3-1ubuntu12.8) focal; urgency=medium
 
   * Prevent build of the zfs-dkms binary package for kernels later than 5.4.
