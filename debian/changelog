@@ -1,3 +1,9 @@
+zfs-linux (2.0.3-8ubuntu2) impish; urgency=medium
+
+  * Use control file for debian tests
+
+ -- Colin Ian King <colin.king@canonical.com>  Thu, 6 May 2021 10:00:01 +0100
+
 zfs-linux (2.0.3-8ubuntu1) impish; urgency=medium
 
   * Enable Ubuntu specific debian patches
