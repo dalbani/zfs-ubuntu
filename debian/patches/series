@@ -30,3 +30,4 @@ ubuntu/4801-Linux-5.12-compat-replace-bio_-_io_acct-with-disk_-_.patch
 ubuntu/4802-Linux-5.12-compat-idmapped-mounts.patch
 ubuntu/4803-Linux-5.12-update-bio_max_segs-replaces-BIO_MAX_PAGE.patch
 ubuntu/4900-ppc-get-user-workaround.patch
+ubuntu/4910-Linux-5.13-compat-block-device-revalidate_disk-remov.patch
