@@ -1,3 +1,12 @@
+zfs-linux (2.0.3-8ubuntu3) impish; urgency=medium
+
+  * Add Linux 5.13 compat fix for deprecated block device
+    revalidate_disk() function.
+    - 4910-Linux-5.13-compat-block-device-revalidate_disk-remov.patch 
+      https://github.com/openzfs/zfs/pull/12027
+
+ -- Colin Ian King <colin.king@canonical.com>  Tue, 11 May 2021 19:16:25 +0100
+
 zfs-linux (2.0.3-8ubuntu2) impish; urgency=medium
 
   * Use control file for debian tests

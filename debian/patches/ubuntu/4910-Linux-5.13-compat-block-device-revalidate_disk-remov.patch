@@ -1,0 +1,109 @@
+From 94d41583056f353723357bfc41f3df5a7ff6536c Mon Sep 17 00:00:00 2001
+From: Colin Ian King <colin.king@canonical.com>
+Date: Tue, 11 May 2021 15:05:13 +0000
+Subject: [PATCH] Linux 5.13 compat: block device revalidate_disk removal
+
+Linux 5.13 finally removed the block device revalidate_disk()
+in 0f00b82e5413571ed225ddbccad6882d7ea60bc7 ("block: remove the
+revalidate_disk method"). Add a build time check for this and
+don't use it for kernels that don't support this unused API.
+
+Signed-off-by: Colin Ian King <colin.king@canonical.com>
+---
+ config/kernel-block-device-revalidate-disk.m4 | 24 +++++++++++++++++++
+ config/kernel.m4                              |  2 ++
+ include/os/linux/kernel/linux/blkdev_compat.h |  4 ++++
+ module/os/linux/zfs/zvol_os.c                 |  2 ++
+ 4 files changed, 32 insertions(+)
+ create mode 100644 config/kernel-block-device-revalidate-disk.m4
+
+Index: zfs-linux-2.0.3/config/kernel-block-device-revalidate-disk.m4
+===================================================================
+--- /dev/null
++++ zfs-linux-2.0.3/config/kernel-block-device-revalidate-disk.m4
+@@ -0,0 +1,24 @@
++dnl #
++dnl # Linux 5.13 ABI, removal of the revalidate_disk .field
++dnl #
++AC_DEFUN([ZFS_AC_KERNEL_SRC_BLOCK_DEVICE_REVALIDATE_DISK], [
++        ZFS_LINUX_TEST_SRC([block_device_revalidate_disk], [
++                #include/linux/blkdev.h
++        ],[
++                static const struct revalidate_disk
++                    ops __attribute__ ((unused)) = {
++                        .revalidate_disk = NULL,
++                };
++        ])
++])
++
++AC_DEFUN([ZFS_AC_KERNEL_BLOCK_DEVICE_REVALIDATE_DISK], [
++        AC_MSG_CHECKING([whether ops->revalidate_disk() exists])
++        ZFS_LINUX_TEST_RESULT([block_device_revalidate_disk], [
++                AC_MSG_RESULT(yes)
++                AC_DEFINE(HAVE_BLOCK_DEVICE_REVALIDATE_DISK, 1,
++                    [ops->revalidate_disk() exists])
++        ],[
++                AC_MSG_RESULT(no)
++        ])
++])
+Index: zfs-linux-2.0.3/config/kernel.m4
+===================================================================
+--- zfs-linux-2.0.3.orig/config/kernel.m4
++++ zfs-linux-2.0.3/config/kernel.m4
+@@ -128,6 +128,7 @@ AC_DEFUN([ZFS_AC_KERNEL_TEST_SRC], [
+ 	ZFS_AC_KERNEL_SRC_MKNOD
+ 	ZFS_AC_KERNEL_SRC_SYMLINK
+ 	ZFS_AC_KERNEL_SRC_BIO_MAX_SEGS
++	ZFS_AC_KERNEL_SRC_BLOCK_DEVICE_REVALIDATE_DISK
+ 
+ 	AC_MSG_CHECKING([for available kernel interfaces])
+ 	ZFS_LINUX_TEST_COMPILE_ALL([kabi])
+@@ -229,6 +230,7 @@ AC_DEFUN([ZFS_AC_KERNEL_TEST_RESULT], [
+ 	ZFS_AC_KERNEL_MKNOD
+ 	ZFS_AC_KERNEL_SYMLINK
+ 	ZFS_AC_KERNEL_BIO_MAX_SEGS
++	ZFS_AC_KERNEL_BLOCK_DEVICE_REVALIDATE_DISK
+ ])
+ 
+ dnl #
+Index: zfs-linux-2.0.3/include/os/linux/kernel/linux/blkdev_compat.h
+===================================================================
+--- zfs-linux-2.0.3.orig/include/os/linux/kernel/linux/blkdev_compat.h
++++ zfs-linux-2.0.3/include/os/linux/kernel/linux/blkdev_compat.h
+@@ -277,18 +277,22 @@ bio_set_bi_error(struct bio *bio, int er
+ static inline int
+ zfs_check_media_change(struct block_device *bdev)
+ {
++#ifdef HAVE_BLOCK_DEVICE_REVALIDATE_DISK
+ 	struct gendisk *gd = bdev->bd_disk;
+ 	const struct block_device_operations *bdo = gd->fops;
++#endif
+ 
+ 	if (!bdev_check_media_change(bdev))
+ 		return (0);
+ 
++#ifdef HAVE_BLOCK_DEVICE_REVALIDATE_DISK
+ 	/*
+ 	 * Force revalidation, to mimic the old behavior of
+ 	 * check_disk_change()
+ 	 */
+ 	if (bdo->revalidate_disk)
+ 		bdo->revalidate_disk(gd);
++#endif
+ 
+ 	return (0);
+ }
+Index: zfs-linux-2.0.3/module/os/linux/zfs/zvol_os.c
+===================================================================
+--- zfs-linux-2.0.3.orig/module/os/linux/zfs/zvol_os.c
++++ zfs-linux-2.0.3/module/os/linux/zfs/zvol_os.c
+@@ -753,7 +753,9 @@ static struct block_device_operations zv
+ 	.ioctl			= zvol_ioctl,
+ 	.compat_ioctl		= zvol_compat_ioctl,
+ 	.check_events		= zvol_check_events,
++#ifdef HAVE_BLOCK_DEVICE_REVALIDATE_DISK
+ 	.revalidate_disk	= zvol_revalidate_disk,
++#endif
+ 	.getgeo			= zvol_getgeo,
+ 	.owner			= THIS_MODULE,
+ #ifdef HAVE_SUBMIT_BIO_IN_BLOCK_DEVICE_OPERATIONS
