@@ -1,3 +1,9 @@
+zfs-linux (0.8.3-1ubuntu12.10) focal; urgency=medium
+
+  * fix uio partial copies (LP: #1904589)
+
+ -- Andrea Righi <andrea.righi@canonical.com>  Thu, 10 Jun 2021 14:49:23 +0100
+
 zfs-linux (0.8.3-1ubuntu12.9) focal; urgency=medium
 
   * No change rebuild in security pocket. LP: #1914279.
