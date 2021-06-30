@@ -21,13 +21,16 @@ ubuntu/4701-enable-ARC-FILL-LOCKED-flag.patch
 0019-Better-zfs_get_enclosure_sysfs_path-enclosure-suppor.patch
 0020-vdev_ops-don-t-try-to-call-vdev_op_hold-or-vdev_op_r.patch
 0026-Linux-increase-max-nvlist_src-size.patch
+#0027-vdev_id-Fix-partition-regular-expression.patch
 0028-Fix-overly-broad-locking-in-spa_vdev_config_exit.patch
 0035-Cancel-TRIM-initialize-on-FAULTED-non-writeable-vdev.patch
 0037-linux-zvol-avoid-heap-allocation-for-zvol_request_sy.patch
 0038-Don-t-bomb-out-when-using-keylocation-file.patch
+#3302-Use-obj-m-instead-of-subdir-m.patch
 ubuntu/4800-Linux-5.12-compat-bio-bi_disk-member-moved.patch
 ubuntu/4801-Linux-5.12-compat-replace-bio_-_io_acct-with-disk_-_.patch
 ubuntu/4802-Linux-5.12-compat-idmapped-mounts.patch
 ubuntu/4803-Linux-5.12-update-bio_max_segs-replaces-BIO_MAX_PAGE.patch
 ubuntu/4900-ppc-get-user-workaround.patch
 ubuntu/4910-Linux-5.13-compat-block-device-revalidate_disk-remov.patch
+ubuntu/4700-META-5.13-kernel.patch
