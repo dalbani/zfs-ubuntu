@@ -1,3 +1,13 @@
+zfs-linux (0.8.3-1ubuntu12.11) focal; urgency=medium
+
+  * Improve scrub testing in kernel-smoke-test-scrub (LP: #1934910)
+    On some slower small memory systems we need to check until resilvering
+    has completed. The most reliably method is to poll on a scrub until
+    it finishes successfully. Give up after ~15 minutes and flag a failure
+    if the scrub can't start or complete successfully.
+
+ -- Colin Ian King <colin.king@canonical.com>  Thu, 8 Jul 2021 08:51:21 +0100
+
 zfs-linux (0.8.3-1ubuntu12.10) focal; urgency=medium
 
   * fix uio partial copies (LP: #1904589)
