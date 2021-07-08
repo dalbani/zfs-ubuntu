@@ -1,3 +1,13 @@
+zfs-linux (2.0.2-1ubuntu5.1) hirsute; urgency=medium
+
+  * Improve scrub testing in kernel-smoke-test-scrub (LP: #1934910)
+    On some slower small memory systems we need to check until resilvering
+    has completed. The most reliably method is to poll on a scrub until
+    it finishes successfully. Give up after ~15 minutes and flag a failure
+    if the scrub can't start or complete successfully.
+
+ -- Colin Ian King <colin.king@canonical.com>  Thu, 8 Jul 2021 08:51:21 +0100
+
 zfs-linux (2.0.2-1ubuntu5) hirsute; urgency=medium
 
   * Fix typo in debian/control, fs-zed should be zfs-zed (LP: #1921594)
