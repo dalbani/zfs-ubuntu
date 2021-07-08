@@ -1,6 +1,7 @@
 include $(top_srcdir)/config/Substfiles.am
 
 dist_man_MANS = \
+	arcstat.8 \
 	fsck.zfs.8 \
 	mount.zfs.8 \
 	vdev_id.8 \
