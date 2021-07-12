@@ -1,3 +1,12 @@
+zfs-linux (0.8.3-1ubuntu12.12) focal; urgency=medium
+
+  * Fix dependency loop preventing swap partitions from being mounted
+    correctly (LP: #1875577)
+    - d/p/4900-Fix-a-dependency-loop.patch
+    - d/p/4901-Fix-another-dependency-loop.patch
+
+ -- Heitor Alves de Siqueira <halves@canonical.com>  Mon, 12 Jul 2021 14:36:13 +0000
+
 zfs-linux (0.8.3-1ubuntu12.11) focal; urgency=medium
 
   * Improve scrub testing in kernel-smoke-test-scrub (LP: #1934910)

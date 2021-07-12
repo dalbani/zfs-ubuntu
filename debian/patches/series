@@ -25,3 +25,5 @@ zfs-mount-container-start.patch
 4701-Bugfix-fix-uio-partial-copies.patch
 4702-Revert-Let-zfs-mount-all-tolerate-in-progress-mounts.patch
 4800-fix-iput-race-in-zfs_iput_async.patch
+4900-Fix-a-dependency-loop.patch
+4901-Fix-another-dependency-loop.patch
