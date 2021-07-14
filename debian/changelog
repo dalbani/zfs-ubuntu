@@ -1,3 +1,11 @@
+zfs-linux (2.0.3-8ubuntu6) impish; urgency=medium
+
+  [ Mo Zhou ]
+  * Cherry-pick "Remove iov_iter_advance() for iter_write" (LP: #1936211)
+    - sync with change between Debian zfs-linux 2.0.3-8 and 2.0.3-9 (Closes: #989373)
+
+ -- Colin Ian King <colin.king@canonical.com>  Wed, 14 Jul 2021 14:03:17 +0100
+
 zfs-linux (2.0.3-8ubuntu5) impish; urgency=medium
 
   * Improve scrub testing in kernel-smoke-test-scrub (LP: #1934910)
