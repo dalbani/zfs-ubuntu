@@ -1,3 +1,11 @@
+zfs-linux (2.0.3-8ubuntu7) impish; urgency=medium
+
+  * Include upstream ZFS Linux 5.14 compat fixes
+    - 4700-Linux-5.14-compat-blk_alloc_disk.patch
+    - 4701-Linux-5.14-compat-explicity-assign-set_page_dirty.patch
+
+ -- Colin Ian King <colin.king@canonical.com>  Mon, 2 Aug 2021 15:19:17 +0100
+
 zfs-linux (2.0.3-8ubuntu6) impish; urgency=medium
 
   [ Mo Zhou ]
