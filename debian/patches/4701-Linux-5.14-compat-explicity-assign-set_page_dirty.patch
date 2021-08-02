@@ -1,0 +1,107 @@
+From 1c24bf966c373009f2be77438e8696aabf50a7e7 Mon Sep 17 00:00:00 2001
+From: Coleman Kane <ckane@colemankane.org>
+Date: Mon, 26 Jul 2021 13:55:55 -0400
+Subject: [PATCH] Linux 5.14 compat: explicity assign set_page_dirty
+
+Kernel 5.14 introduced a change where set_page_dirty of
+struct address_space_operations is no longer implicitly set to
+__set_page_dirty_buffers(), which ended up resulting in a NULL
+pointer deref in the kernel when it is attempted to be called.
+This change sets .set_page_dirty in the structure to
+__set_page_dirty_nobuffers(), which was introduced with the
+related patch set. The breaking change was introduce in commit
+0af573780b0b13fceb7fabd49dc1b073cee9a507 to torvalds/linux.git.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Coleman Kane <ckane@colemankane.org>
+Closes #12427
+---
+ config/kernel-vfs-set_page_dirty.m4 | 34 +++++++++++++++++++++++++++++
+ config/kernel.m4                    |  2 ++
+ module/os/linux/zfs/zpl_file.c      |  6 +++++
+ 3 files changed, 42 insertions(+)
+ create mode 100644 config/kernel-vfs-set_page_dirty.m4
+
+Index: zfs-linux-2.0.3/config/kernel-vfs-set_page_dirty.m4
+===================================================================
+--- /dev/null
++++ zfs-linux-2.0.3/config/kernel-vfs-set_page_dirty.m4
+@@ -0,0 +1,34 @@
++dnl #
++dnl # Linux 5.14 adds a change to require set_page_dirty to be manually
++dnl # wired up in struct address_space_operations. Determine if this needs
++dnl # to be done. This patch set also introduced __set_page_dirty_nobuffers
++dnl # declaration in linux/pagemap.h, so these tests look for the presence
++dnl # of that function to tell the compiler to assign set_page_dirty in
++dnl # module/os/linux/zfs/zpl_file.c
++dnl #
++AC_DEFUN([ZFS_AC_KERNEL_SRC_VFS_SET_PAGE_DIRTY_NOBUFFERS], [
++	ZFS_LINUX_TEST_SRC([vfs_has_set_page_dirty_nobuffers], [
++		#include <linux/pagemap.h>
++		#include <linux/fs.h>
++
++		static const struct address_space_operations
++		    aops __attribute__ ((unused)) = {
++			.set_page_dirty = __set_page_dirty_nobuffers,
++		};
++	],[])
++])
++
++AC_DEFUN([ZFS_AC_KERNEL_VFS_SET_PAGE_DIRTY_NOBUFFERS], [
++	dnl #
++	dnl # Linux 5.14 change requires set_page_dirty() to be assigned
++	dnl # in address_space_operations()
++	dnl #
++	AC_MSG_CHECKING([__set_page_dirty_nobuffers exists])
++	ZFS_LINUX_TEST_RESULT([vfs_has_set_page_dirty_nobuffers], [
++		AC_MSG_RESULT([yes])
++		AC_DEFINE(HAVE_VFS_SET_PAGE_DIRTY_NOBUFFERS, 1,
++			[__set_page_dirty_nobuffers exists])
++	],[
++		AC_MSG_RESULT([no])
++	])
++])
+Index: zfs-linux-2.0.3/config/kernel.m4
+===================================================================
+--- zfs-linux-2.0.3.orig/config/kernel.m4
++++ zfs-linux-2.0.3/config/kernel.m4
+@@ -129,6 +129,7 @@ AC_DEFUN([ZFS_AC_KERNEL_TEST_SRC], [
+ 	ZFS_AC_KERNEL_SRC_SYMLINK
+ 	ZFS_AC_KERNEL_SRC_BIO_MAX_SEGS
+ 	ZFS_AC_KERNEL_SRC_BLOCK_DEVICE_REVALIDATE_DISK
++	ZFS_AC_KERNEL_SRC_VFS_SET_PAGE_DIRTY_NOBUFFERS
+ 
+ 	AC_MSG_CHECKING([for available kernel interfaces])
+ 	ZFS_LINUX_TEST_COMPILE_ALL([kabi])
+@@ -231,6 +232,7 @@ AC_DEFUN([ZFS_AC_KERNEL_TEST_RESULT], [
+ 	ZFS_AC_KERNEL_SYMLINK
+ 	ZFS_AC_KERNEL_BIO_MAX_SEGS
+ 	ZFS_AC_KERNEL_BLOCK_DEVICE_REVALIDATE_DISK
++	ZFS_AC_KERNEL_VFS_SET_PAGE_DIRTY_NOBUFFERS
+ ])
+ 
+ dnl #
+Index: zfs-linux-2.0.3/module/os/linux/zfs/zpl_file.c
+===================================================================
+--- zfs-linux-2.0.3.orig/module/os/linux/zfs/zpl_file.c
++++ zfs-linux-2.0.3/module/os/linux/zfs/zpl_file.c
+@@ -33,6 +33,9 @@
+ #include <sys/zfs_vfsops.h>
+ #include <sys/zfs_vnops.h>
+ #include <sys/zfs_project.h>
++#ifdef HAVE_VFS_SET_PAGE_DIRTY_NOBUFFERS
++#include <linux/pagemap.h>
++#endif
+ 
+ /*
+  * When using fallocate(2) to preallocate space, inflate the requested
+@@ -1007,6 +1010,9 @@ const struct address_space_operations zp
+ 	.writepage	= zpl_writepage,
+ 	.writepages	= zpl_writepages,
+ 	.direct_IO	= zpl_direct_IO,
++#ifdef HAVE_VFS_SET_PAGE_DIRTY_NOBUFFERS
++	.set_page_dirty = __set_page_dirty_nobuffers,
++#endif
+ };
+ 
+ const struct file_operations zpl_file_operations = {
