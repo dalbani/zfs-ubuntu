@@ -1,3 +1,11 @@
+zfs-linux (0.8.3-1ubuntu12.13) focal; urgency=medium
+
+  * Fix zfs receive -s when using ZFS 2.x kernel drivers (LP: #1939177)
+    - 4910-Fix-EIO-after-resuming-receive-of-new-dataset-over-a.patch
+    - 4911-compat-nullify-action-handle.patch
+
+ -- Colin Ian King <colin.king@canonical.com>  Mon, 16 Aug 2021 15:55:52 +0100
+
 zfs-linux (0.8.3-1ubuntu12.12) focal; urgency=medium
 
   * Fix dependency loop preventing swap partitions from being mounted
