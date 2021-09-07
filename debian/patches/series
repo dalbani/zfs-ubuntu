@@ -35,5 +35,7 @@ ubuntu/4900-ppc-get-user-workaround.patch
 ubuntu/4910-Linux-5.13-compat-block-device-revalidate_disk-remov.patch
 ubuntu/4700-META-5.13-kernel.patch
 0001-Remove-iov_iter_advance-for-iter_write.patch
-4700-Linux-5.14-compat-blk_alloc_disk.patch
-4701-Linux-5.14-compat-explicity-assign-set_page_dirty.patch
+ubuntu/4700-Linux-5.14-compat-blk_alloc_disk.patch
+ubuntu/4701-Linux-5.14-compat-explicity-assign-set_page_dirty.patch
+ubuntu/4750-linux-spl-base-proc_dohostid-on-proc_dostring.patch
+ubuntu/4751-suppress-types.patch

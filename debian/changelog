@@ -1,3 +1,13 @@
+zfs-linux (2.0.3-8ubuntu8) impish; urgency=medium
+
+  * Fix /proc/sys/kernel/spl/hostid (LP: #1942991)
+   - 4750-linux-spl-base-proc_dohostid-on-proc_dostring.patch
+  * Fix build issues with latest tool updates:
+   - 4751-suppress-regex_t.patch
+  * Move 470* patches to debian/ubuntu
+
+ -- Colin Ian King <colin.king@canonical.com>  Tue, 7 Sep 2021 19:08:23 +0100
+
 zfs-linux (2.0.3-8ubuntu7) impish; urgency=medium
 
   * Include upstream ZFS Linux 5.14 compat fixes
