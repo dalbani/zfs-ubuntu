@@ -22,3 +22,12 @@ zfs-mount-container-start.patch
 move-arcstat-1-to-8.patch
 4700-Set-file-mode-during-zfs_write.patch
 4750-linux-spl-base-proc_dohostid-on-proc_dostring.patch
+4800-Linux-5.12-compat-bio-bi_disk-member-moved.patch
+4801-Linux-5.12-compat-replace-bio_-_io_acct-with-disk_-_.patch
+4802-Linux-5.12-compat-idmapped-mounts.patch
+4803-Linux-5.12-update-bio_max_segs-replaces-BIO_MAX_PAGE.patch
+4804-Remove-iov_iter_advance-for-iter_write.patch
+4805-linux-5.13-compat-bdevops-revalidate_disk-removed.patch
+4806-Linux-5.14-compat-blk_alloc_disk.patch
+4807-Linux-5.14-compat-explicity-assign-set_page_dirty.patch
+4808-Linux-5.14-compat-META.patch

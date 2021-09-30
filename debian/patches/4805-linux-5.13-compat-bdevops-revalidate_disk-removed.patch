@@ -1,0 +1,115 @@
+From 48c7b0e444591ca5e0199e266e79ecff53e81ee6 Mon Sep 17 00:00:00 2001
+From: Coleman Kane <ckane@colemankane.org>
+Date: Tue, 11 May 2021 22:53:02 -0400
+Subject: [PATCH] linux 5.13 compat: bdevops->revalidate_disk() removed
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+Linux kernel commit 0f00b82e5413571ed225ddbccad6882d7ea60bc7 removes the
+revalidate_disk() handler from struct block_device_operations. This
+caused a regression, and this commit eliminates the call to it and the
+assignment in the block_device_operations static handler assignment
+code, when configure identifies that the kernel doesn't support that
+API handler.
+
+Reviewed-by: Colin Ian King <colin.king@canonical.com>
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Coleman Kane <ckane@colemankane.org>
+Closes #11967
+Closes #11977
+---
+ config/kernel-block-device-operations.m4      | 32 +++++++++++++++++++
+ include/os/linux/kernel/linux/blkdev_compat.h |  4 +++
+ module/os/linux/zfs/zvol_os.c                 |  2 ++
+ 3 files changed, 38 insertions(+)
+
+Index: zfs-linux-2.0.2/config/kernel-block-device-operations.m4
+===================================================================
+--- zfs-linux-2.0.2.orig/config/kernel-block-device-operations.m4
++++ zfs-linux-2.0.2/config/kernel-block-device-operations.m4
+@@ -52,12 +52,44 @@ AC_DEFUN([ZFS_AC_KERNEL_BLOCK_DEVICE_OPE
+ 	])
+ ])
+ 
++dnl #
++dnl # 5.13 API change
++dnl # block_device_operations->revalidate_disk() was removed
++dnl #
++AC_DEFUN([ZFS_AC_KERNEL_SRC_BLOCK_DEVICE_OPERATIONS_REVALIDATE_DISK], [
++	ZFS_LINUX_TEST_SRC([block_device_operations_revalidate_disk], [
++		#include <linux/blkdev.h>
++
++		int blk_revalidate_disk(struct gendisk *disk) {
++			return(0);
++		}
++
++		static const struct block_device_operations
++		    bops __attribute__ ((unused)) = {
++			.revalidate_disk	= blk_revalidate_disk,
++		};
++	], [], [$NO_UNUSED_BUT_SET_VARIABLE])
++])
++
++AC_DEFUN([ZFS_AC_KERNEL_BLOCK_DEVICE_OPERATIONS_REVALIDATE_DISK], [
++	AC_MSG_CHECKING([whether bops->revalidate_disk() exists])
++	ZFS_LINUX_TEST_RESULT([block_device_operations_revalidate_disk], [
++		AC_DEFINE([HAVE_BLOCK_DEVICE_OPERATIONS_REVALIDATE_DISK], [1],
++			[Define if revalidate_disk() in block_device_operations])
++		AC_MSG_RESULT(yes)
++	],[
++		AC_MSG_RESULT(no)
++	])
++])
++
+ AC_DEFUN([ZFS_AC_KERNEL_SRC_BLOCK_DEVICE_OPERATIONS], [
+ 	ZFS_AC_KERNEL_SRC_BLOCK_DEVICE_OPERATIONS_CHECK_EVENTS
+ 	ZFS_AC_KERNEL_SRC_BLOCK_DEVICE_OPERATIONS_RELEASE_VOID
++	ZFS_AC_KERNEL_SRC_BLOCK_DEVICE_OPERATIONS_REVALIDATE_DISK
+ ])
+ 
+ AC_DEFUN([ZFS_AC_KERNEL_BLOCK_DEVICE_OPERATIONS], [
+ 	ZFS_AC_KERNEL_BLOCK_DEVICE_OPERATIONS_CHECK_EVENTS
+ 	ZFS_AC_KERNEL_BLOCK_DEVICE_OPERATIONS_RELEASE_VOID
++	ZFS_AC_KERNEL_BLOCK_DEVICE_OPERATIONS_REVALIDATE_DISK
+ ])
+Index: zfs-linux-2.0.2/include/os/linux/kernel/linux/blkdev_compat.h
+===================================================================
+--- zfs-linux-2.0.2.orig/include/os/linux/kernel/linux/blkdev_compat.h
++++ zfs-linux-2.0.2/include/os/linux/kernel/linux/blkdev_compat.h
+@@ -277,18 +277,22 @@ bio_set_bi_error(struct bio *bio, int er
+ static inline int
+ zfs_check_media_change(struct block_device *bdev)
+ {
++#ifdef HAVE_BLOCK_DEVICE_OPERATIONS_REVALIDATE_DISK
+ 	struct gendisk *gd = bdev->bd_disk;
+ 	const struct block_device_operations *bdo = gd->fops;
++#endif
+ 
+ 	if (!bdev_check_media_change(bdev))
+ 		return (0);
+ 
++#ifdef HAVE_BLOCK_DEVICE_OPERATIONS_REVALIDATE_DISK
+ 	/*
+ 	 * Force revalidation, to mimic the old behavior of
+ 	 * check_disk_change()
+ 	 */
+ 	if (bdo->revalidate_disk)
+ 		bdo->revalidate_disk(gd);
++#endif
+ 
+ 	return (0);
+ }
+Index: zfs-linux-2.0.2/module/os/linux/zfs/zvol_os.c
+===================================================================
+--- zfs-linux-2.0.2.orig/module/os/linux/zfs/zvol_os.c
++++ zfs-linux-2.0.2/module/os/linux/zfs/zvol_os.c
+@@ -718,7 +718,9 @@ static struct block_device_operations zv
+ 	.ioctl			= zvol_ioctl,
+ 	.compat_ioctl		= zvol_compat_ioctl,
+ 	.check_events		= zvol_check_events,
++#ifdef HAVE_BLOCK_DEVICE_OPERATIONS_REVALIDATE_DISK
+ 	.revalidate_disk	= zvol_revalidate_disk,
++#endif
+ 	.getgeo			= zvol_getgeo,
+ 	.owner			= THIS_MODULE,
+ #ifdef HAVE_SUBMIT_BIO_IN_BLOCK_DEVICE_OPERATIONS
