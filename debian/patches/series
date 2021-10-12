@@ -31,3 +31,4 @@ move-arcstat-1-to-8.patch
 4806-Linux-5.14-compat-blk_alloc_disk.patch
 4807-Linux-5.14-compat-explicity-assign-set_page_dirty.patch
 4808-Linux-5.14-compat-META.patch
+4900-Fix-zfs_get_data-access-to-files-with-wrong-generati.patch

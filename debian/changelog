@@ -1,3 +1,12 @@
+zfs-linux (2.0.2-1ubuntu5.4) hirsute; urgency=medium
+
+  * Fix zfs_get_data access to files causing panics (LP: #1946686)
+   - debian/patches/4900-Fix-zfs_get_data-access-to-files-with-wrong-generati.patch
+     backport from upstream ZFS commit 296a4a369bc1078a694f88570972330985b3b1b8
+     ("Fix zfs_get_data access to files with wrong generation")
+
+ -- Colin Ian King <colin.king@canonical.com>  Tue, 12 Oct 2021 12:34:17 +0100
+
 zfs-linux (2.0.2-1ubuntu5.3) hirsute; urgency=medium
 
   * Add Linux 5.12 to 5.14 kernel compat changes (LP: #1944417)
