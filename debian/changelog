@@ -1,3 +1,12 @@
+zfs-linux (0.8.3-1ubuntu12.14) focal; urgency=medium
+
+  * Fix zfs_get_data access to files causing panics (LP: #1946686)
+   - debian/patches/4920-Fix-zfs_get_data-access-to-files-with-wrong-generati.patch
+     backport from upstream ZFS commit 296a4a369bc1078a694f88570972330985b3b1b8
+     ("Fix zfs_get_data access to files with wrong generation")
+
+ -- Colin Ian King <colin.king@canonical.com>  Tue, 12 Oct 2021 14:02:12 +0100
+
 zfs-linux (0.8.3-1ubuntu12.13) focal; urgency=medium
 
   * Fix zfs receive -s when using ZFS 2.x kernel drivers (LP: #1939177)
