@@ -29,3 +29,4 @@ zfs-mount-container-start.patch
 4901-Fix-another-dependency-loop.patch
 4910-Fix-EIO-after-resuming-receive-of-new-dataset-over-a.patch
 4911-compat-nullify-action-handle.patch
+4920-Fix-zfs_get_data-access-to-files-with-wrong-generati.patch

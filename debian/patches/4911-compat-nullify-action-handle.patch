@@ -11,7 +11,7 @@ Index: zfs-linux-0.8.3/lib/libzfs/libzfs_sendrecv.c
 ===================================================================
 --- zfs-linux-0.8.3.orig/lib/libzfs/libzfs_sendrecv.c
 +++ zfs-linux-0.8.3/lib/libzfs/libzfs_sendrecv.c
-@@ -4799,7 +4799,6 @@ zfs_receive(libzfs_handle_t *hdl, const
+@@ -4801,7 +4801,6 @@ zfs_receive(libzfs_handle_t *hdl, const
  	char *top_zfs = NULL;
  	int err;
  	int cleanup_fd;
@@ -19,7 +19,7 @@ Index: zfs-linux-0.8.3/lib/libzfs/libzfs_sendrecv.c
  	struct stat sb;
  	char *originsnap = NULL;
  
-@@ -4854,7 +4853,7 @@ zfs_receive(libzfs_handle_t *hdl, const
+@@ -4856,7 +4855,7 @@ zfs_receive(libzfs_handle_t *hdl, const
  	VERIFY(cleanup_fd >= 0);
  
  	err = zfs_receive_impl(hdl, tosnap, originsnap, flags, infd, NULL, NULL,
