@@ -1,3 +1,9 @@
+zfs-linux (2.0.6-1ubuntu2.1) impish; urgency=medium
+
+  * Fix uid function in zfs initramfs script. LP: #1946808
+
+ -- Dimitri John Ledkov <dimitri.ledkov@canonical.com>  Wed, 13 Oct 2021 11:12:37 +0100
+
 zfs-linux (2.0.6-1ubuntu2) impish; urgency=medium
 
   * Revert workaround on fill locked flag patch (LP: #1906476)
