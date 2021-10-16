@@ -1,3 +1,9 @@
+zfs-linux (2.0.6-1ubuntu3) jammy; urgency=medium
+
+  * No-change rebuild to add python3.10.
+
+ -- Matthias Klose <doko@ubuntu.com>  Sat, 16 Oct 2021 22:01:03 +0200
+
 zfs-linux (2.0.6-1ubuntu2.1) impish; urgency=medium
 
   * Fix uid function in zfs initramfs script. LP: #1946808
