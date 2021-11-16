@@ -1,0 +1,23 @@
+From afa7b3484556d3ae610a34582ce5ebd2c3e27bba Mon Sep 17 00:00:00 2001
+From: Paul Zuchowski <31706010+PaulZ-98@users.noreply.github.com>
+Date: Fri, 11 Jun 2021 20:00:33 -0400
+Subject: [PATCH] Do not hash unlinked inodes
+
+In zfs_znode_alloc we always hash inodes.  If the
+znode is unlinked, we do not need to hash it.  This
+fixes the problem where zfs_suspend_fs is doing zrele
+(iput) in an async fashion, and zfs_resume_fs unlinked
+drain processing will try to hash an inode that could
+still be hashed, resulting in a panic.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Reviewed-by: Alan Somers <asomers@gmail.com>
+Signed-off-by: Paul Zuchowski <pzuchowski@datto.com>
+Closes #9741
+Closes #11223
+Closes #11648
+Closes #12210
+---
+ module/os/linux/zfs/zfs_znode.c | 15 +++++++++++----
+ 1 file changed, 11 insertions(+), 4 deletions(-)
+
