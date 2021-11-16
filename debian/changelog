@@ -1,3 +1,10 @@
+zfs-linux (2.0.6-2) unstable; urgency=medium
+
+  * Add PPC get_user workaround from Ubuntu (Closes: #995014)
+  * Fix FTBFS because of abigail upgrade (Closes: #999663)
+
+ -- Aron Xu <aron@debian.org>  Wed, 17 Nov 2021 01:55:16 +0800
+
 zfs-linux (2.0.6-1) unstable; urgency=medium
 
   [ Ben K ]
