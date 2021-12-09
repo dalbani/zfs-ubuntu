@@ -1,3 +1,9 @@
+zfs-linux (2.0.6-1ubuntu4) jammy; urgency=medium
+
+  * No-change rebuild against libssl3
+
+ -- Steve Langasek <steve.langasek@ubuntu.com>  Thu, 09 Dec 2021 00:23:48 +0000
+
 zfs-linux (2.0.6-1ubuntu3) jammy; urgency=medium
 
   * No-change rebuild to add python3.10.
