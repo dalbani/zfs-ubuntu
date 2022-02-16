@@ -47,6 +47,7 @@
 #include <sys/strings.h>
 #include <linux/kmap_compat.h>
 #include <linux/uaccess.h>
+#include <linux/printk.h>
 
 /*
  * Move "n" bytes at byte address "p"; "rw" indicates the direction
@@ -79,11 +80,16 @@ zfs_uiomove_iov(void *p, size_t n, zfs_uio_rw_t rw, zfs_uio_t *uio)
 					    (iov->iov_base + skip), cnt)) {
 						return (EFAULT);
 					}
+#if defined(__PPC64__)
+					printk_ratelimited(KERN_ERR "uiomove_iov(): __copy_from_user_inatomic() not available to ZFS\n");
+					return (EFAULT);
+#else
 					pagefault_disable();
 					b_left =
 					    __copy_from_user_inatomic(p,
 					    (iov->iov_base + skip), cnt);
 					pagefault_enable();
+#endif
 				} else {
 					b_left =
 					    copy_from_user(p,
@@ -248,7 +254,7 @@ zfs_uio_prefaultpages(ssize_t n, zfs_uio_t *uio)
 			/* touch each page in this segment. */
 			p = iov->iov_base + skip;
 			while (cnt) {
-				if (get_user(tmp, (uint8_t *)p))
+				if (copy_from_user(&tmp, p, 1))
 					return (EFAULT);
 				ulong_t incr = MIN(cnt, PAGESIZE);
 				p += incr;
@@ -256,7 +262,7 @@ zfs_uio_prefaultpages(ssize_t n, zfs_uio_t *uio)
 			}
 			/* touch the last byte in case it straddles a page. */
 			p--;
-			if (get_user(tmp, (uint8_t *)p))
+			if (copy_from_user(&tmp, p, 1))
 				return (EFAULT);
 		}
 	}
