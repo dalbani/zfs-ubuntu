@@ -1,0 +1,36 @@
+From 1f4c79b1ce0b27b747149b2820fa5f6f051b7d4b Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Mon, 4 Apr 2022 14:25:01 +0200
+Subject: [PATCH 11/18] libzfs: sendrecv: always cancel progress thread in
+ zfs_send_one()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+This is in line with all the other uses of the progress thread
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #11560
+Closes #13284
+---
+ lib/libzfs/libzfs_sendrecv.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/lib/libzfs/libzfs_sendrecv.c b/lib/libzfs/libzfs_sendrecv.c
+index b67c9b30c8..60050e22a3 100644
+--- a/lib/libzfs/libzfs_sendrecv.c
++++ b/lib/libzfs/libzfs_sendrecv.c
+@@ -2522,8 +2522,7 @@ zfs_send_one(zfs_handle_t *zhp, const char *from, int fd, sendflags_t *flags,
+ 
+ 	if (flags->progress) {
+ 		void *status = NULL;
+-		if (err != 0)
+-			(void) pthread_cancel(ptid);
++		(void) pthread_cancel(ptid);
+ 		(void) pthread_join(ptid, &status);
+ 		int error = (int)(uintptr_t)status;
+ 		if (error != 0 && status != PTHREAD_CANCELED)
+-- 
+2.32.0
+

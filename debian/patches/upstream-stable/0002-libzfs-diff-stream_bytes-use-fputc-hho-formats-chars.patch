@@ -1,0 +1,37 @@
+From 7fbb90feeab7b8a61875e9ba1ec136125e8177cc Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Thu, 9 Dec 2021 23:42:02 +0100
+Subject: [PATCH 02/18] libzfs: diff: stream_bytes: use fputc, %hho formats
+ chars
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Reviewed-by: Rich Ercolani <rincebrain@gmail.com>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Upstream-commit: a72129edcb7353f5301096ea9541e8e345f052d4
+Closes #12829
+---
+ lib/libzfs/libzfs_diff.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/lib/libzfs/libzfs_diff.c b/lib/libzfs/libzfs_diff.c
+index b721a9fd9e..57a7c15565 100644
+--- a/lib/libzfs/libzfs_diff.c
++++ b/lib/libzfs/libzfs_diff.c
+@@ -122,9 +122,9 @@ stream_bytes(FILE *fp, const char *string)
+ 
+ 	while ((c = *string++) != '\0') {
+ 		if (c > ' ' && c != '\\' && c < '\177') {
+-			(void) fprintf(fp, "%c", c);
++			(void) fputc(c, fp);
+ 		} else {
+-			(void) fprintf(fp, "\\%04o", (uint8_t)c);
++			(void) fprintf(fp, "\\%04hho", (uint8_t)c);
+ 		}
+ 	}
+ }
+-- 
+2.32.0
+

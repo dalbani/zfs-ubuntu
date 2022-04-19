@@ -1,0 +1,39 @@
+From 972637dc06a04432dc58e240b8ef3e9f538b98bb Mon Sep 17 00:00:00 2001
+From: Alexander Motin <mav@FreeBSD.org>
+Date: Mon, 18 Apr 2022 20:25:49 -0400
+Subject: [PATCH 18/18] FreeBSD: Fix translation from ABD to physical pages.
+
+In hypothetical case of non-linear ABD with single segment, multiple
+to page size but not aligned to it, vdev_geom_fill_unmap_cb() could
+fill one page less into bio_ma array.
+
+I am not sure it is expoitable, but better to be safe than sorry.
+
+Reported-by: Mark Johnston <markj@FreeBSD.org>
+Signed-off-by: Alexander Motin <mav@FreeBSD.org>
+(cherry picked from commit 5352f85cddce44e82fb1c4caec3b333e3666d7fd)
+---
+ module/os/freebsd/zfs/vdev_geom.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/module/os/freebsd/zfs/vdev_geom.c b/module/os/freebsd/zfs/vdev_geom.c
+index 2ef4811a8a..5447eb9220 100644
+--- a/module/os/freebsd/zfs/vdev_geom.c
++++ b/module/os/freebsd/zfs/vdev_geom.c
+@@ -1132,8 +1132,12 @@ vdev_geom_fill_unmap_cb(void *buf, size_t len, void *priv)
+ 	vm_offset_t addr = (vm_offset_t)buf;
+ 	vm_offset_t end = addr + len;
+ 
+-	if (bp->bio_ma_n == 0)
++	if (bp->bio_ma_n == 0) {
+ 		bp->bio_ma_offset = addr & PAGE_MASK;
++		addr &= ~PAGE_MASK;
++	} else {
++		ASSERT0(P2PHASE(addr, PAGE_SIZE));
++	}
+ 	do {
+ 		bp->bio_ma[bp->bio_ma_n++] =
+ 		    PHYS_TO_VM_PAGE(pmap_kextract(addr));
+-- 
+2.32.0
+

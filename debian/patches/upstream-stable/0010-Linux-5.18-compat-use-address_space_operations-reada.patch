@@ -1,0 +1,119 @@
+From 35ddd8ee2e5fdbaa5b0d94c063bbc1a79ab12cb1 Mon Sep 17 00:00:00 2001
+From: Riccardo Schirone <rschirone91@gmail.com>
+Date: Sat, 2 Apr 2022 01:15:25 +0200
+Subject: [PATCH 10/18] Linux 5.18 compat: use
+ address_space_operations->readahead
+
+->readpages was removed and replaced by ->readahead. Define
+zpl_readahead for kernels that don't have ->readpages.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Riccardo Schirone <rschirone91@gmail.com>
+Closes #13278
+---
+ config/kernel-readpages.m4     | 25 +++++++++++++++++++++++++
+ config/kernel.m4               |  2 ++
+ module/os/linux/zfs/zpl_file.c | 21 +++++++++++++++++++++
+ 3 files changed, 48 insertions(+)
+ create mode 100644 config/kernel-readpages.m4
+
+diff --git a/config/kernel-readpages.m4 b/config/kernel-readpages.m4
+new file mode 100644
+index 0000000000..0bf67ffd93
+--- /dev/null
++++ b/config/kernel-readpages.m4
+@@ -0,0 +1,25 @@
++dnl #
++dnl # Linux 5.18 removes address_space_operations ->readpages in favour of
++dnl # ->readahead
++dnl #
++AC_DEFUN([ZFS_AC_KERNEL_SRC_VFS_READPAGES], [
++	ZFS_LINUX_TEST_SRC([vfs_has_readpages], [
++		#include <linux/fs.h>
++
++		static const struct address_space_operations
++		    aops __attribute__ ((unused)) = {
++			.readpages = NULL,
++		};
++	],[])
++])
++
++AC_DEFUN([ZFS_AC_KERNEL_VFS_READPAGES], [
++	AC_MSG_CHECKING([address_space_operations->readpages exists])
++	ZFS_LINUX_TEST_RESULT([vfs_has_readpages], [
++		AC_MSG_RESULT([yes])
++		AC_DEFINE(HAVE_VFS_READPAGES, 1,
++			[address_space_operations->readpages exists])
++	],[
++		AC_MSG_RESULT([no])
++	])
++])
+diff --git a/config/kernel.m4 b/config/kernel.m4
+index 3122e9dbaa..7e546b58a7 100644
+--- a/config/kernel.m4
++++ b/config/kernel.m4
+@@ -132,6 +132,7 @@ AC_DEFUN([ZFS_AC_KERNEL_TEST_SRC], [
+ 	ZFS_AC_KERNEL_SRC_SIGNAL_STOP
+ 	ZFS_AC_KERNEL_SRC_SIGINFO
+ 	ZFS_AC_KERNEL_SRC_SET_SPECIAL_STATE
++	ZFS_AC_KERNEL_SRC_VFS_READPAGES
+ 	ZFS_AC_KERNEL_SRC_VFS_SET_PAGE_DIRTY_NOBUFFERS
+ 	ZFS_AC_KERNEL_SRC_STANDALONE_LINUX_STDARG
+ 	ZFS_AC_KERNEL_SRC_PAGEMAP_FOLIO_WAIT_BIT
+@@ -242,6 +243,7 @@ AC_DEFUN([ZFS_AC_KERNEL_TEST_RESULT], [
+ 	ZFS_AC_KERNEL_SIGNAL_STOP
+ 	ZFS_AC_KERNEL_SIGINFO
+ 	ZFS_AC_KERNEL_SET_SPECIAL_STATE
++	ZFS_AC_KERNEL_VFS_READPAGES
+ 	ZFS_AC_KERNEL_VFS_SET_PAGE_DIRTY_NOBUFFERS
+ 	ZFS_AC_KERNEL_STANDALONE_LINUX_STDARG
+ 	ZFS_AC_KERNEL_PAGEMAP_FOLIO_WAIT_BIT
+diff --git a/module/os/linux/zfs/zpl_file.c b/module/os/linux/zfs/zpl_file.c
+index f1241c4437..4965815ece 100644
+--- a/module/os/linux/zfs/zpl_file.c
++++ b/module/os/linux/zfs/zpl_file.c
+@@ -647,12 +647,29 @@ zpl_readpage_filler(void *data, struct page *pp)
+  * paging.  For simplicity, the code relies on read_cache_pages() to
+  * correctly lock each page for IO and call zpl_readpage().
+  */
++#ifdef HAVE_VFS_READPAGES
+ static int
+ zpl_readpages(struct file *filp, struct address_space *mapping,
+     struct list_head *pages, unsigned nr_pages)
+ {
+ 	return (read_cache_pages(mapping, pages, zpl_readpage_filler, NULL));
+ }
++#else
++static void
++zpl_readahead(struct readahead_control *ractl)
++{
++	struct page *page;
++
++	while ((page = readahead_page(ractl)) != NULL) {
++		int ret;
++
++		ret = zpl_readpage_filler(NULL, page);
++		put_page(page);
++		if (ret)
++			break;
++	}
++}
++#endif
+ 
+ static int
+ zpl_putpage(struct page *pp, struct writeback_control *wbc, void *data)
+@@ -1027,7 +1044,11 @@ zpl_compat_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+ 
+ 
+ const struct address_space_operations zpl_address_space_operations = {
++#ifdef HAVE_VFS_READPAGES
+ 	.readpages	= zpl_readpages,
++#else
++	.readahead	= zpl_readahead,
++#endif
+ 	.readpage	= zpl_readpage,
+ 	.writepage	= zpl_writepage,
+ 	.writepages	= zpl_writepages,
+-- 
+2.32.0
+

@@ -1,0 +1,229 @@
+From 5a21214be84e4b00f419220e4da51f16cee13cad Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Fri, 10 Dec 2021 00:02:52 +0100
+Subject: [PATCH 01/18] zfs, libzfs: diff: accept -h/ZFS_DIFF_NO_MANGLE,
+ disabling path escaping
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Reviewed-by: Rich Ercolani <rincebrain@gmail.com>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Upstream-commit: 344bbc82e7054f61d5e7b3610b119820285fd2cb
+Closes #12829
+---
+ cmd/zfs/zfs_main.c                            |  5 +-
+ include/libzfs.h                              |  7 +--
+ include/libzfs_impl.h                         |  1 +
+ lib/libzfs/libzfs_diff.c                      | 10 +++-
+ man/man8/zfs-diff.8                           |  6 ++-
+ tests/runfiles/common.run                     |  2 +-
+ .../functional/cli_root/zfs_diff/Makefile.am  |  1 +
+ .../cli_root/zfs_diff/zfs_diff_cliargs.ksh    |  4 +-
+ .../cli_root/zfs_diff/zfs_diff_mangle.ksh     | 48 +++++++++++++++++++
+ 9 files changed, 74 insertions(+), 10 deletions(-)
+ create mode 100755 tests/zfs-tests/tests/functional/cli_root/zfs_diff/zfs_diff_mangle.ksh
+
+diff --git a/cmd/zfs/zfs_main.c b/cmd/zfs/zfs_main.c
+index d0bb73a725..d648aef7e7 100644
+--- a/cmd/zfs/zfs_main.c
++++ b/cmd/zfs/zfs_main.c
+@@ -7672,7 +7672,7 @@ zfs_do_diff(int argc, char **argv)
+ 	int c;
+ 	struct sigaction sa;
+ 
+-	while ((c = getopt(argc, argv, "FHt")) != -1) {
++	while ((c = getopt(argc, argv, "FHth")) != -1) {
+ 		switch (c) {
+ 		case 'F':
+ 			flags |= ZFS_DIFF_CLASSIFY;
+@@ -7683,6 +7683,9 @@ zfs_do_diff(int argc, char **argv)
+ 		case 't':
+ 			flags |= ZFS_DIFF_TIMESTAMP;
+ 			break;
++		case 'h':
++			flags |= ZFS_DIFF_NO_MANGLE;
++			break;
+ 		default:
+ 			(void) fprintf(stderr,
+ 			    gettext("invalid option '%c'\n"), optopt);
+diff --git a/include/libzfs.h b/include/libzfs.h
+index eeb4daae72..d55e3f2e73 100644
+--- a/include/libzfs.h
++++ b/include/libzfs.h
+@@ -795,9 +795,10 @@ extern int zfs_receive(libzfs_handle_t *, const char *, nvlist_t *,
+     recvflags_t *, int, avl_tree_t *);
+ 
+ typedef enum diff_flags {
+-	ZFS_DIFF_PARSEABLE = 0x1,
+-	ZFS_DIFF_TIMESTAMP = 0x2,
+-	ZFS_DIFF_CLASSIFY = 0x4
++	ZFS_DIFF_PARSEABLE = 1 << 0,
++	ZFS_DIFF_TIMESTAMP = 1 << 1,
++	ZFS_DIFF_CLASSIFY = 1 << 2,
++	ZFS_DIFF_NO_MANGLE = 1 << 3
+ } diff_flags_t;
+ 
+ extern int zfs_show_diffs(zfs_handle_t *, int, const char *, const char *,
+diff --git a/include/libzfs_impl.h b/include/libzfs_impl.h
+index 96b11dad13..043ff9cd77 100644
+--- a/include/libzfs_impl.h
++++ b/include/libzfs_impl.h
+@@ -234,6 +234,7 @@ typedef struct differ_info {
+ 	boolean_t scripted;
+ 	boolean_t classify;
+ 	boolean_t timestamped;
++	boolean_t no_mangle;
+ 	uint64_t shares;
+ 	int zerr;
+ 	int cleanupfd;
+diff --git a/lib/libzfs/libzfs_diff.c b/lib/libzfs/libzfs_diff.c
+index d46e23a2fc..b721a9fd9e 100644
+--- a/lib/libzfs/libzfs_diff.c
++++ b/lib/libzfs/libzfs_diff.c
+@@ -176,8 +176,13 @@ print_what(FILE *fp, mode_t what)
+ static void
+ print_cmn(FILE *fp, differ_info_t *di, const char *file)
+ {
+-	stream_bytes(fp, di->dsmnt);
+-	stream_bytes(fp, file);
++	if (!di->no_mangle) {
++		stream_bytes(fp, di->dsmnt);
++		stream_bytes(fp, file);
++	} else {
++		(void) fputs(di->dsmnt, fp);
++		(void) fputs(file, fp);
++	}
+ }
+ 
+ static void
+@@ -752,6 +757,7 @@ zfs_show_diffs(zfs_handle_t *zhp, int outfd, const char *fromsnap,
+ 	di.scripted = (flags & ZFS_DIFF_PARSEABLE);
+ 	di.classify = (flags & ZFS_DIFF_CLASSIFY);
+ 	di.timestamped = (flags & ZFS_DIFF_TIMESTAMP);
++	di.no_mangle = (flags & ZFS_DIFF_NO_MANGLE);
+ 
+ 	di.outputfd = outfd;
+ 	di.datafd = pipefd[0];
+diff --git a/man/man8/zfs-diff.8 b/man/man8/zfs-diff.8
+index 49443bf47d..a347f32520 100644
+--- a/man/man8/zfs-diff.8
++++ b/man/man8/zfs-diff.8
+@@ -39,7 +39,7 @@
+ .Sh SYNOPSIS
+ .Nm zfs
+ .Cm diff
+-.Op Fl FHt
++.Op Fl FHth
+ .Ar snapshot Ar snapshot Ns | Ns Ar filesystem
+ .
+ .Sh DESCRIPTION
+@@ -92,6 +92,10 @@ Give more parsable tab-separated output, without header lines and without
+ arrows.
+ .It Fl t
+ Display the path's inode change time as the first column of output.
++.It Fl h
++Do not
++.Sy \e0 Ns Ar ooo Ns -escape
++non-ASCII paths.
+ .El
+ .
+ .Sh SEE ALSO
+diff --git a/tests/runfiles/common.run b/tests/runfiles/common.run
+index aefcd98436..19919a00af 100644
+--- a/tests/runfiles/common.run
++++ b/tests/runfiles/common.run
+@@ -178,7 +178,7 @@ tags = ['functional', 'cli_root', 'zfs_destroy']
+ 
+ [tests/functional/cli_root/zfs_diff]
+ tests = ['zfs_diff_changes', 'zfs_diff_cliargs', 'zfs_diff_timestamp',
+-    'zfs_diff_types', 'zfs_diff_encrypted']
++    'zfs_diff_types', 'zfs_diff_encrypted', 'zfs_diff_mangle']
+ tags = ['functional', 'cli_root', 'zfs_diff']
+ 
+ [tests/functional/cli_root/zfs_get]
+diff --git a/tests/zfs-tests/tests/functional/cli_root/zfs_diff/Makefile.am b/tests/zfs-tests/tests/functional/cli_root/zfs_diff/Makefile.am
+index db90e05855..bfb01dcb8f 100644
+--- a/tests/zfs-tests/tests/functional/cli_root/zfs_diff/Makefile.am
++++ b/tests/zfs-tests/tests/functional/cli_root/zfs_diff/Makefile.am
+@@ -8,6 +8,7 @@ dist_pkgdata_SCRIPTS = \
+ 	zfs_diff_changes.ksh \
+ 	zfs_diff_cliargs.ksh \
+ 	zfs_diff_encrypted.ksh \
++	zfs_diff_mangle.ksh \
+ 	zfs_diff_timestamp.ksh \
+ 	zfs_diff_types.ksh
+ 
+diff --git a/tests/zfs-tests/tests/functional/cli_root/zfs_diff/zfs_diff_cliargs.ksh b/tests/zfs-tests/tests/functional/cli_root/zfs_diff/zfs_diff_cliargs.ksh
+index 7063bbe9ce..67eb18fa4a 100755
+--- a/tests/zfs-tests/tests/functional/cli_root/zfs_diff/zfs_diff_cliargs.ksh
++++ b/tests/zfs-tests/tests/functional/cli_root/zfs_diff/zfs_diff_cliargs.ksh
+@@ -39,8 +39,8 @@ function cleanup
+ log_assert "'zfs diff' should only work with supported options."
+ log_onexit cleanup
+ 
+-typeset goodopts=("" "-F" "-H" "-t" "-FH" "-Ft" "-Ht" "-FHt")
+-typeset badopts=("-f" "-h" "-h" "-T" "-Fx" "-Ho" "-tT" "-")
++typeset goodopts=("" "-h" "-t" "-th" "-H" "-Hh" "-Ht" "-Hth" "-F" "-Fh" "-Ft" "-Fth" "-FH" "-FHh" "-FHt" "-FHth")
++typeset badopts=("-f" "-T" "-Fx" "-Ho" "-tT" "-")
+ 
+ DATASET="$TESTPOOL/$TESTFS"
+ TESTSNAP1="$DATASET@snap1"
+diff --git a/tests/zfs-tests/tests/functional/cli_root/zfs_diff/zfs_diff_mangle.ksh b/tests/zfs-tests/tests/functional/cli_root/zfs_diff/zfs_diff_mangle.ksh
+new file mode 100755
+index 0000000000..ffce9f0684
+--- /dev/null
++++ b/tests/zfs-tests/tests/functional/cli_root/zfs_diff/zfs_diff_mangle.ksh
+@@ -0,0 +1,48 @@
++#!/bin/ksh -p
++#
++# This file and its contents are supplied under the terms of the
++# Common Development and Distribution License ("CDDL"), version 1.0.
++# You may only use this file in accordance with the terms of version
++# 1.0 of the CDDL.
++#
++# A full copy of the text of the CDDL should have accompanied this
++# source.  A copy of the CDDL is also available via the Internet at
++# http://www.illumos.org/license/CDDL.
++#
++
++. $STF_SUITE/include/libtest.shlib
++
++#
++# DESCRIPTION:
++# 'zfs diff' escapes filenames as expected, 'zfs diff -h' doesn't
++#
++# STRATEGY:
++# 1. Prepare a dataset
++# 2. Create some files
++# 3. verify 'zfs diff' mangles them and 'zfs diff -h' doesn't
++#
++
++verify_runnable "both"
++
++function cleanup
++{
++	log_must zfs destroy -r "$DATASET"
++}
++
++log_assert "'zfs diff' mangles filenames, 'zfs diff -h' doesn't"
++log_onexit cleanup
++
++DATASET="$TESTPOOL/$TESTFS/fs"
++TESTSNAP1="$DATASET@snap1"
++
++# 1. Prepare a dataset
++log_must zfs create "$DATASET"
++MNTPOINT="$(get_prop mountpoint "$DATASET")"
++log_must zfs snapshot "$TESTSNAP1"
++
++printf '%c\t'"$MNTPOINT/"'%s\n' M '' + 'śmieszny żupan'                       + 'достопримечательности'                                                                                                                                                                                              | sort > "$MNTPOINT/śmieszny żupan"
++printf '%c\t'"$MNTPOINT/"'%s\n' M '' + '\0305\0233mieszny\0040\0305\0274upan' + '\0320\0264\0320\0276\0321\0201\0321\0202\0320\0276\0320\0277\0321\0200\0320\0270\0320\0274\0320\0265\0321\0207\0320\0260\0321\0202\0320\0265\0320\0273\0321\0214\0320\0275\0320\0276\0321\0201\0321\0202\0320\0270' | sort > "$MNTPOINT/достопримечательности"
++log_must diff -u <(zfs diff -h "$TESTSNAP1" | grep -vF '<xattrdir>' | sort) "$MNTPOINT/śmieszny żupan"
++log_must diff -u <(zfs diff    "$TESTSNAP1" | grep -vF '<xattrdir>' | sort) "$MNTPOINT/достопримечательности"
++
++log_pass "'zfs diff' mangles filenames, 'zfs diff -h' doesn't"
+-- 
+2.32.0
+
