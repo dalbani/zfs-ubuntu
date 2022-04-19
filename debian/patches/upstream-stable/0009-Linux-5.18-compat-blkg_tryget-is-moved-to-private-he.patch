@@ -1,0 +1,42 @@
+From 10a9f5fc47acc6c9d3475023001264ca5fb741a6 Mon Sep 17 00:00:00 2001
+From: Riccardo Schirone <rschirone91@gmail.com>
+Date: Fri, 1 Apr 2022 23:47:36 +0200
+Subject: [PATCH 09/18] Linux 5.18 compat: blkg_tryget is moved to private
+ headers
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Riccardo Schirone <rschirone91@gmail.com>
+Closes #13278
+---
+ module/os/linux/zfs/vdev_disk.c | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/module/os/linux/zfs/vdev_disk.c b/module/os/linux/zfs/vdev_disk.c
+index 23bb7c11d2..2708535b3b 100644
+--- a/module/os/linux/zfs/vdev_disk.c
++++ b/module/os/linux/zfs/vdev_disk.c
+@@ -467,8 +467,11 @@ vdev_submit_bio_impl(struct bio *bio)
+  * blkg_tryget() to use rcu_read_lock() instead of rcu_read_lock_sched().
+  * As a side effect the function was converted to GPL-only.  Define our
+  * own version when needed which uses rcu_read_lock_sched().
++ *
++ * The Linux 5.17 kernel split linux/blk-cgroup.h into a private and a public
++ * part, moving blkg_tryget into the private one. Define our own version.
+  */
+-#if defined(HAVE_BLKG_TRYGET_GPL_ONLY)
++#if defined(HAVE_BLKG_TRYGET_GPL_ONLY) || !defined(HAVE_BLKG_TRYGET)
+ static inline bool
+ vdev_blkg_tryget(struct blkcg_gq *blkg)
+ {
+@@ -493,7 +496,7 @@ vdev_blkg_tryget(struct blkcg_gq *blkg)
+ 
+ 	return (rc);
+ }
+-#elif defined(HAVE_BLKG_TRYGET)
++#else
+ #define	vdev_blkg_tryget(bg)	blkg_tryget(bg)
+ #endif
+ #ifdef HAVE_BIO_SET_DEV_MACRO
+-- 
+2.32.0
+

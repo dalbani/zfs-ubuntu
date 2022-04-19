@@ -1,0 +1,106 @@
+From 215a8255a97f32cb26881d6fb4f883b7608329d0 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Thu, 24 Mar 2022 15:22:53 +0100
+Subject: [PATCH 07/18] Linux 5.18 compat: 4-argument bio_alloc()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+  bio_alloc(gfp_t gfp_mask, unsigned short nr_iovecs)
+
+became
+
+  bio_alloc(struct block_device *bdev, unsigned short nr_vecs,
+            unsigned int opf, gfp_t gfp_mask)
+passing NULL/0 continues previous behaviour
+
+Upstream-commit: 07888c665b405b1cd3577ddebfeb74f4717a84c4 ("block:
+ pass a block_device and opf to bio_alloc")
+
+Reviewed-by: Tony Hutter <hutter2@llnl.gov>
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #13251
+---
+ config/kernel-bio.m4            | 37 +++++++++++++++++++++++++++++++++
+ module/os/linux/zfs/vdev_disk.c |  4 ++++
+ 2 files changed, 41 insertions(+)
+
+diff --git a/config/kernel-bio.m4 b/config/kernel-bio.m4
+index d088d7023c..b5d2544815 100644
+--- a/config/kernel-bio.m4
++++ b/config/kernel-bio.m4
+@@ -474,6 +474,41 @@ AC_DEFUN([ZFS_AC_KERNEL_BLK_CGROUP_HEADER], [
+ 	])
+ ])
+ 
++dnl #
++dnl # Linux 5.18 API
++dnl #
++dnl # In 07888c665b405b1cd3577ddebfeb74f4717a84c4 ("block: pass a block_device and opf to bio_alloc")
++dnl #   bio_alloc(gfp_t gfp_mask, unsigned short nr_iovecs)
++dnl # became
++dnl #   bio_alloc(struct block_device *bdev, unsigned short nr_vecs, unsigned int opf, gfp_t gfp_mask)
++dnl # however
++dnl # > NULL/0 can be passed, both for the
++dnl # > passthrough case on a raw request_queue and to temporarily avoid
++dnl # > refactoring some nasty code.
++dnl #
++AC_DEFUN([ZFS_AC_KERNEL_SRC_BIO_ALLOC_4ARG], [
++	ZFS_LINUX_TEST_SRC([bio_alloc_4arg], [
++		#include <linux/bio.h>
++	],[
++		gfp_t gfp_mask = 0;
++		unsigned short nr_iovecs = 0;
++		struct block_device *bdev = NULL;
++		unsigned int opf = 0;
++
++		struct bio *__attribute__((unused)) allocated = bio_alloc(bdev, nr_iovecs, opf, gfp_mask);
++	])
++])
++
++AC_DEFUN([ZFS_AC_KERNEL_BIO_ALLOC_4ARG], [
++	AC_MSG_CHECKING([for 4-argument bio_alloc()])
++	ZFS_LINUX_TEST_RESULT([bio_alloc_4arg],[
++		AC_MSG_RESULT(yes)
++		AC_DEFINE([HAVE_BIO_ALLOC_4ARG], 1, [bio_alloc() takes 4 arguments])
++	],[
++		AC_MSG_RESULT(no)
++	])
++])
++
+ AC_DEFUN([ZFS_AC_KERNEL_SRC_BIO], [
+ 	ZFS_AC_KERNEL_SRC_REQ
+ 	ZFS_AC_KERNEL_SRC_BIO_OPS
+@@ -488,6 +523,7 @@ AC_DEFUN([ZFS_AC_KERNEL_SRC_BIO], [
+ 	ZFS_AC_KERNEL_SRC_BDEV_SUBMIT_BIO_RETURNS_VOID
+ 	ZFS_AC_KERNEL_SRC_BIO_SET_DEV_MACRO
+ 	ZFS_AC_KERNEL_SRC_BLK_CGROUP_HEADER
++	ZFS_AC_KERNEL_SRC_BIO_ALLOC_4ARG
+ ])
+ 
+ AC_DEFUN([ZFS_AC_KERNEL_BIO], [
+@@ -512,4 +548,5 @@ AC_DEFUN([ZFS_AC_KERNEL_BIO], [
+ 	ZFS_AC_KERNEL_BIO_BDEV_DISK
+ 	ZFS_AC_KERNEL_BDEV_SUBMIT_BIO_RETURNS_VOID
+ 	ZFS_AC_KERNEL_BLK_CGROUP_HEADER
++	ZFS_AC_KERNEL_BIO_ALLOC_4ARG
+ ])
+diff --git a/module/os/linux/zfs/vdev_disk.c b/module/os/linux/zfs/vdev_disk.c
+index 581a790865..23bb7c11d2 100644
+--- a/module/os/linux/zfs/vdev_disk.c
++++ b/module/os/linux/zfs/vdev_disk.c
+@@ -563,6 +563,10 @@ vdev_submit_bio(struct bio *bio)
+ 	current->bio_list = bio_list;
+ }
+ 
++#ifdef HAVE_BIO_ALLOC_4ARG
++#define	bio_alloc(gfp_mask, nr_iovecs) bio_alloc(NULL, nr_iovecs, 0, gfp_mask)
++#endif
++
+ static int
+ __vdev_disk_physio(struct block_device *bdev, zio_t *zio,
+     size_t io_size, uint64_t io_offset, int rw, int flags)
+-- 
+2.32.0
+

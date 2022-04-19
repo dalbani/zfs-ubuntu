@@ -1,0 +1,84 @@
+From e9cd90f6e5953df79ae5db84e3b23f339d6098f7 Mon Sep 17 00:00:00 2001
+From: Mark Johnston <markj@FreeBSD.org>
+Date: Thu, 7 Apr 2022 17:11:00 -0400
+Subject: [PATCH 13/18] FreeBSD: Parameterize ZFS_ENTER/ZFS_VERIFY_VP with an
+ error code
+
+For legacy reasons, a couple of VOPs have to return error numbers that
+don't come from the usual errno namespace.  To handle the cases where
+ZFS_ENTER or ZFS_VERIFY_ZP fail, we need to be able to override the
+default error return value of EIO.  Extend the macros to permit this.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Reviewed-by: Ryan Moeller <ryan@iXsystems.com>
+Signed-off-by: Mark Johnston <markj@FreeBSD.org>
+Closes #13311
+---
+ include/os/freebsd/zfs/sys/zfs_znode_impl.h | 32 ++++++++++++---------
+ module/os/freebsd/zfs/zfs_vnops_os.c        |  2 +-
+ 2 files changed, 19 insertions(+), 15 deletions(-)
+
+diff --git a/include/os/freebsd/zfs/sys/zfs_znode_impl.h b/include/os/freebsd/zfs/sys/zfs_znode_impl.h
+index edb28d041a..3d93525b45 100644
+--- a/include/os/freebsd/zfs/sys/zfs_znode_impl.h
++++ b/include/os/freebsd/zfs/sys/zfs_znode_impl.h
+@@ -123,25 +123,29 @@ extern minor_t zfsdev_minor_alloc(void);
+ #define	zn_rlimit_fsize(zp, uio) \
+     vn_rlimit_fsize(ZTOV(zp), GET_UIO_STRUCT(uio), zfs_uio_td(uio))
+ 
++#define	ZFS_ENTER_ERROR(zfsvfs, error) do {			\
++	ZFS_TEARDOWN_ENTER_READ((zfsvfs), FTAG);		\
++	if (__predict_false((zfsvfs)->z_unmounted)) {		\
++		ZFS_TEARDOWN_EXIT_READ(zfsvfs, FTAG);		\
++		return (error);					\
++	}							\
++} while (0)
++
+ /* Called on entry to each ZFS vnode and vfs operation  */
+-#define	ZFS_ENTER(zfsvfs) \
+-	{ \
+-		ZFS_TEARDOWN_ENTER_READ((zfsvfs), FTAG); \
+-		if (__predict_false((zfsvfs)->z_unmounted)) { \
+-			ZFS_TEARDOWN_EXIT_READ(zfsvfs, FTAG); \
+-			return (EIO); \
+-		} \
+-	}
++#define	ZFS_ENTER(zfsvfs)	ZFS_ENTER_ERROR(zfsvfs, EIO)
+ 
+ /* Must be called before exiting the vop */
+-#define	ZFS_EXIT(zfsvfs) ZFS_TEARDOWN_EXIT_READ(zfsvfs, FTAG)
++#define	ZFS_EXIT(zfsvfs)	ZFS_TEARDOWN_EXIT_READ(zfsvfs, FTAG)
++
++#define	ZFS_VERIFY_ZP_ERROR(zp, error) do {			\
++	if (__predict_false((zp)->z_sa_hdl == NULL)) {		\
++		ZFS_EXIT((zp)->z_zfsvfs);			\
++		return (error);					\
++	}							\
++} while (0)
+ 
+ /* Verifies the znode is valid */
+-#define	ZFS_VERIFY_ZP(zp) \
+-	if (__predict_false((zp)->z_sa_hdl == NULL)) { \
+-		ZFS_EXIT((zp)->z_zfsvfs); \
+-		return (EIO); \
+-	} \
++#define	ZFS_VERIFY_ZP(zp)	ZFS_VERIFY_ZP_ERROR(zp, EIO)
+ 
+ /*
+  * Macros for dealing with dmu_buf_hold
+diff --git a/module/os/freebsd/zfs/zfs_vnops_os.c b/module/os/freebsd/zfs/zfs_vnops_os.c
+index 9e0de0f6f3..75a4fd1833 100644
+--- a/module/os/freebsd/zfs/zfs_vnops_os.c
++++ b/module/os/freebsd/zfs/zfs_vnops_os.c
+@@ -5434,7 +5434,7 @@ zfs_getextattr(struct vop_getextattr_args *ap)
+ 
+ 	error = ENOENT;
+ 	ZFS_ENTER(zfsvfs);
+-	ZFS_VERIFY_ZP(zp)
++	ZFS_VERIFY_ZP(zp);
+ 	rw_enter(&zp->z_xattr_lock, RW_READER);
+ 	if (zfsvfs->z_use_sa && zp->z_is_sa)
+ 		error = zfs_getextattr_sa(ap, attrname);
+-- 
+2.32.0
+

@@ -1,0 +1,39 @@
+From 5a9994f5ae69448ad604e8184bd2ee8e437ffbca Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Mon, 11 Oct 2021 10:54:39 -0700
+Subject: [PATCH 05/18] Export minimal zfs_refcount interfaces
+
+Lustre makes light use of the zfs_refcount interfaces which
+isn't a problem when using a non-debug build of OpenZFS. However,
+when debugging is enabled the required symbols are not exported.
+
+Reviewed-by: Olaf Faaland <faaland1@llnl.gov>
+Reviewed-by: Tony Hutter <hutter2@llnl.gov>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #12613
+---
+ module/zfs/refcount.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/module/zfs/refcount.c b/module/zfs/refcount.c
+index 354e021d9d..35a379dded 100644
+--- a/module/zfs/refcount.c
++++ b/module/zfs/refcount.c
+@@ -318,6 +318,14 @@ zfs_refcount_not_held(zfs_refcount_t *rc, const void *holder)
+ 	return (B_TRUE);
+ }
+ 
++EXPORT_SYMBOL(zfs_refcount_create);
++EXPORT_SYMBOL(zfs_refcount_destroy);
++EXPORT_SYMBOL(zfs_refcount_is_zero);
++EXPORT_SYMBOL(zfs_refcount_count);
++EXPORT_SYMBOL(zfs_refcount_add);
++EXPORT_SYMBOL(zfs_refcount_remove);
++EXPORT_SYMBOL(zfs_refcount_held);
++
+ /* BEGIN CSTYLED */
+ ZFS_MODULE_PARAM(zfs, ,reference_tracking_enable, INT, ZMOD_RW,
+ 	"Track reference holders to refcount_t objects");
+-- 
+2.32.0
+
