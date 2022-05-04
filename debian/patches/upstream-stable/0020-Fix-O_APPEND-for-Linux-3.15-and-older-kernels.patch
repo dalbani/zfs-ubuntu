@@ -1,0 +1,37 @@
+From 71cd3726c08056911fbdc020f8cdb3dc03a9e2c9 Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Thu, 28 Apr 2022 15:15:28 -0700
+Subject: [PATCH] Fix O_APPEND for Linux 3.15 and older kernels
+
+When using a Linux kernel which predates the iov_iter interface the
+O_APPEND flag should be applied in zpl_aio_write() via the call to
+generic_write_checks().  The updated pos variable  was incorrectly
+ignored resulting in the current offset being used.
+
+This issue should only realistically impact the RHEL/CentOS 7.x
+kernels which are based on Linux 3.10.
+
+Reviewed-by: Tony Hutter <hutter2@llnl.gov>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #13370
+Closes #13377
+---
+ module/os/linux/zfs/zpl_file.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/module/os/linux/zfs/zpl_file.c b/module/os/linux/zfs/zpl_file.c
+index 1ed41b9c4c..cd2919f9ac 100644
+--- a/module/os/linux/zfs/zpl_file.c
++++ b/module/os/linux/zfs/zpl_file.c
+@@ -413,6 +413,8 @@ zpl_aio_write(struct kiocb *kiocb, const struct iovec *iov,
+ 	if (ret)
+ 		return (ret);
+ 
++	kiocb->ki_pos = pos;
++
+ 	zfs_uio_t uio;
+ 	zfs_uio_iovec_init(&uio, iov, nr_segs, kiocb->ki_pos, UIO_USERSPACE,
+ 	    count, 0);
+-- 
+2.32.0
+

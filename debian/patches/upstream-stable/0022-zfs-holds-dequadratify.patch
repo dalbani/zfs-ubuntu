@@ -1,0 +1,47 @@
+From c0ff5f156070bd815bea811b8fd97ad1a78edd6d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Fri, 29 Apr 2022 00:18:47 +0200
+Subject: [PATCH] zfs: holds: dequadratify
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Before:
+  15  0m0.177s
+  30  0m0.653s
+  45  0m1.289s
+  60  0m2.129s
+  75  0m3.264s
+  90  0m4.397s
+  100 0m5.996s
+  117 0m8.552s
+
+After:
+  30  0m0.053s
+  117 0m0.125s
+
+Upstream-commit: 2a70a090729dade59967bbfe6a4984c18613e0ee
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #13372
+Closes #13373
+---
+ cmd/zfs/zfs_main.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/cmd/zfs/zfs_main.c b/cmd/zfs/zfs_main.c
+index d648aef7e7..6f0c846fdd 100644
+--- a/cmd/zfs/zfs_main.c
++++ b/cmd/zfs/zfs_main.c
+@@ -6593,7 +6593,7 @@ zfs_do_holds(int argc, char **argv)
+ 		/*
+ 		 *  1. collect holds data, set format options
+ 		 */
+-		ret = zfs_for_each(argc, argv, flags, types, NULL, NULL, limit,
++		ret = zfs_for_each(1, argv + i, flags, types, NULL, NULL, limit,
+ 		    holds_callback, &cb);
+ 		if (ret != 0)
+ 			++errors;
+-- 
+2.32.0
+

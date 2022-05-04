@@ -1,8 +1,7 @@
 From aa1c3c1d1d829a877e56c8da6390d40f7656e8bb Mon Sep 17 00:00:00 2001
 From: Brian Behlendorf <behlendorf1@llnl.gov>
 Date: Tue, 19 Apr 2022 10:38:04 -0700
-Subject: [PATCH 15/18] Linux 5.17 compat: GENHD_FL_EXT_DEVT /
- GENHD_FL_NO_PART_SCAN
+Subject: [PATCH] Linux 5.17 compat: GENHD_FL_EXT_DEVT / GENHD_FL_NO_PART_SCAN
 
 As of the 5.17 kernel the GENHD_FL_EXT_DEVT flag has been removed
 and the GENHD_FL_NO_PART_SCAN flag renamed GENHD_FL_NO_PART. Update

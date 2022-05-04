@@ -1,0 +1,41 @@
+From a1a54b3e470bf59f787bc8d92fd64b9e20e8cc06 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Thu, 3 Jun 2021 17:10:41 +0200
+Subject: [PATCH] libzutil: zpool_find_config: remove unused variable
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Reviewed-by: Ryan Moeller <ryan@iXsystems.com>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #12187
+---
+ lib/libzutil/zutil_import.c | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/lib/libzutil/zutil_import.c b/lib/libzutil/zutil_import.c
+index d91953813d..f6f125e7a5 100644
+--- a/lib/libzutil/zutil_import.c
++++ b/lib/libzutil/zutil_import.c
+@@ -1791,16 +1791,13 @@ zpool_find_config(void *hdl, const char *target, nvlist_t **configp,
+ 	nvlist_t *match = NULL;
+ 	nvlist_t *config = NULL;
+ 	char *sepp = NULL;
+-	char sep = '\0';
+ 	int count = 0;
+ 	char *targetdup = strdup(target);
+ 
+ 	*configp = NULL;
+ 
+-	if ((sepp = strpbrk(targetdup, "/@")) != NULL) {
+-		sep = *sepp;
++	if ((sepp = strpbrk(targetdup, "/@")) != NULL)
+ 		*sepp = '\0';
+-	}
+ 
+ 	pools = zpool_search_import(hdl, args, pco);
+ 
+-- 
+2.32.0
+

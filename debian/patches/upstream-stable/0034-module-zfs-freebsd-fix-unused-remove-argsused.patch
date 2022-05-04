@@ -1,0 +1,67 @@
+From ecec151c149b368a8dcc4457face54a04b67c9dd Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Wed, 22 Dec 2021 18:35:13 +0100
+Subject: [PATCH] module: zfs: freebsd: fix unused, remove argsused
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #12844
+---
+ module/os/freebsd/zfs/spa_os.c    | 2 --
+ module/os/freebsd/zfs/zfs_znode.c | 8 +++-----
+ 2 files changed, 3 insertions(+), 7 deletions(-)
+
+diff --git a/module/os/freebsd/zfs/spa_os.c b/module/os/freebsd/zfs/spa_os.c
+index 070e7a5b9f..d5f851a308 100644
+--- a/module/os/freebsd/zfs/spa_os.c
++++ b/module/os/freebsd/zfs/spa_os.c
+@@ -183,7 +183,6 @@ spa_import_rootpool(const char *name, bool checkpointrewind)
+ 	spa_t *spa;
+ 	vdev_t *rvd;
+ 	nvlist_t *config, *nvtop;
+-	uint64_t txg;
+ 	char *pname;
+ 	int error;
+ 
+@@ -196,7 +195,6 @@ spa_import_rootpool(const char *name, bool checkpointrewind)
+ 	if (config != NULL) {
+ 		pname = fnvlist_lookup_string(config, ZPOOL_CONFIG_POOL_NAME);
+ 		VERIFY0(strcmp(name, pname));
+-		txg = fnvlist_lookup_uint64(config, ZPOOL_CONFIG_POOL_TXG);
+ 
+ 		if ((spa = spa_lookup(pname)) != NULL) {
+ 			/*
+diff --git a/module/os/freebsd/zfs/zfs_znode.c b/module/os/freebsd/zfs/zfs_znode.c
+index 26cd2149c3..a10f4af47e 100644
+--- a/module/os/freebsd/zfs/zfs_znode.c
++++ b/module/os/freebsd/zfs/zfs_znode.c
+@@ -575,7 +575,6 @@ zfs_mknode(znode_t *dzp, vattr_t *vap, dmu_tx_t *tx, cred_t *cr,
+ 	dmu_buf_t	*db;
+ 	timestruc_t	now;
+ 	uint64_t	gen, obj;
+-	int		err;
+ 	int		bonuslen;
+ 	int		dnodesize;
+ 	sa_handle_t	*sa_hdl;
+@@ -815,12 +814,11 @@ zfs_mknode(znode_t *dzp, vattr_t *vap, dmu_tx_t *tx, cred_t *cr,
+ 		VERIFY0(zfs_aclset_common(*zpp, acl_ids->z_aclp, cr, tx));
+ 	}
+ 	if (!(flag & IS_ROOT_NODE)) {
+-		vnode_t *vp;
+-
+-		vp = ZTOV(*zpp);
++		vnode_t *vp = ZTOV(*zpp);
+ 		vp->v_vflag |= VV_FORCEINSMQ;
+-		err = insmntque(vp, zfsvfs->z_vfs);
++		int err = insmntque(vp, zfsvfs->z_vfs);
+ 		vp->v_vflag &= ~VV_FORCEINSMQ;
++		(void) err;
+ 		KASSERT(err == 0, ("insmntque() failed: error %d", err));
+ 	}
+ 	kmem_free(sa_attrs, sizeof (sa_bulk_attr_t) * ZPL_END);
+-- 
+2.32.0
+

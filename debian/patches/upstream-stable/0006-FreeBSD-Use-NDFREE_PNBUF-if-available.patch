@@ -1,7 +1,7 @@
 From a5a28723bdd09903c55c4a6aa471e361392ff1b2 Mon Sep 17 00:00:00 2001
 From: Ryan Moeller <freqlabs@FreeBSD.org>
 Date: Sat, 2 Apr 2022 15:10:55 -0400
-Subject: [PATCH 06/18] FreeBSD: Use NDFREE_PNBUF if available
+Subject: [PATCH] FreeBSD: Use NDFREE_PNBUF if available
 
 NDF_ONLY_PNBUF has been removed from FreeBSD in favor of NDFREE_PNBUF.
 

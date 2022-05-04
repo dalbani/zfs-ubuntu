@@ -1,3 +1,9 @@
+zfs-linux (2.1.4-0ubuntu1) kinetic; urgency=medium
+
+  * Update upstream-stable patches for more v5.18 compat.
+
+ -- Dimitri John Ledkov <dimitri.ledkov@canonical.com>  Wed, 04 May 2022 11:19:24 +0200
+
 zfs-linux (2.1.4-0ubuntu0.1) jammy; urgency=medium
 
   * New upstream point release (LP: #1969482):

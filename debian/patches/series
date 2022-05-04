@@ -16,6 +16,23 @@ upstream-stable/0015-Linux-5.17-compat-GENHD_FL_EXT_DEVT-GENHD_FL_NO_PART.patch
 upstream-stable/0016-Document-zfs-inherit-S-s-interaction-with-noninherit.patch
 upstream-stable/0017-Corrected-oversight-in-ZERO_RANGE-behavior.patch
 upstream-stable/0018-FreeBSD-Fix-translation-from-ABD-to-physical-pages.patch
+upstream-stable/0019-Linux-5.18-compat-kobj_type.default_attrs-replaced-w.patch
+upstream-stable/0020-Fix-O_APPEND-for-Linux-3.15-and-older-kernels.patch
+upstream-stable/0021-Linux-5.18-compat-replace-__set_page_dirty_nobuffers.patch
+upstream-stable/0022-zfs-holds-dequadratify.patch
+upstream-stable/0023-Skip-spacemaps-reading-in-case-of-pool-readonly-impo.patch
+upstream-stable/0024-libzutil-zpool_find_config-remove-unused-variable.patch
+upstream-stable/0025-libzfs-zfs_send-remove-unused-variable.patch
+upstream-stable/0026-module-zfs-arc-arc_hdr_realloc_crypt-remove-unused-v.patch
+upstream-stable/0027-module-zfs-dbuf-dbuf_read_impl-remove-unused-variabl.patch
+upstream-stable/0028-module-zfs-vdev_indirect-vdev_indirect_repair-remove.patch
+upstream-stable/0029-module-zfs-vdev_removal-spa_vdev_remove_thread-remov.patch
+upstream-stable/0030-zvol-remove-unused-variable.patch
+upstream-stable/0031-fm-remove-unused-variables.patch
+upstream-stable/0032-zvol-remove-unused-variable.patch
+upstream-stable/0033-FreeBSD-remove-unused-variable.patch
+upstream-stable/0034-module-zfs-freebsd-fix-unused-remove-argsused.patch
+upstream-stable/0035-Silence-unused-but-set-variable-warnings.patch
 #unapplied/init-debian-openrc-workaround.patch # OpenRC users can apply this locally
 1000-dont-symlink-zed-scripts.patch
 1001-Prevent-manual-builds-in-the-DKMS-source.patch

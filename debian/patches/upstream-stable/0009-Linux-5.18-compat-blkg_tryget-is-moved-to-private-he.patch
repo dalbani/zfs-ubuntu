@@ -1,8 +1,7 @@
 From 10a9f5fc47acc6c9d3475023001264ca5fb741a6 Mon Sep 17 00:00:00 2001
 From: Riccardo Schirone <rschirone91@gmail.com>
 Date: Fri, 1 Apr 2022 23:47:36 +0200
-Subject: [PATCH 09/18] Linux 5.18 compat: blkg_tryget is moved to private
- headers
+Subject: [PATCH] Linux 5.18 compat: blkg_tryget is moved to private headers
 
 Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
 Signed-off-by: Riccardo Schirone <rschirone91@gmail.com>

@@ -1,0 +1,49 @@
+From 116d447fb5d58aa0ba8a56055679d0d9c82fe7ef Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Thu, 3 Jun 2021 18:30:23 +0200
+Subject: [PATCH] libzfs: zfs_send: remove unused variable
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Reviewed-by: Ryan Moeller <ryan@iXsystems.com>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #12187
+---
+ lib/libzfs/libzfs_sendrecv.c | 12 ------------
+ 1 file changed, 12 deletions(-)
+
+diff --git a/lib/libzfs/libzfs_sendrecv.c b/lib/libzfs/libzfs_sendrecv.c
+index 60050e22a3..a944cc164f 100644
+--- a/lib/libzfs/libzfs_sendrecv.c
++++ b/lib/libzfs/libzfs_sendrecv.c
+@@ -2133,7 +2133,6 @@ zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
+ 	avl_tree_t *fsavl = NULL;
+ 	static uint64_t holdseq;
+ 	int spa_version;
+-	int featureflags = 0;
+ 	FILE *fout;
+ 
+ 	(void) snprintf(errbuf, sizeof (errbuf), dgettext(TEXT_DOMAIN,
+@@ -2145,17 +2144,6 @@ zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
+ 		return (zfs_error(zhp->zfs_hdl, EZFS_NOENT, errbuf));
+ 	}
+ 
+-	if (zhp->zfs_type == ZFS_TYPE_FILESYSTEM) {
+-		uint64_t version;
+-		version = zfs_prop_get_int(zhp, ZFS_PROP_VERSION);
+-		if (version >= ZPL_VERSION_SA) {
+-			featureflags |= DMU_BACKUP_FEATURE_SA_SPILL;
+-		}
+-	}
+-
+-	if (flags->holds)
+-		featureflags |= DMU_BACKUP_FEATURE_HOLDS;
+-
+ 	if (flags->replicate || flags->doall || flags->props ||
+ 	    flags->holds || flags->backup) {
+ 		char full_tosnap_name[ZFS_MAX_DATASET_NAME_LEN];
+-- 
+2.32.0
+

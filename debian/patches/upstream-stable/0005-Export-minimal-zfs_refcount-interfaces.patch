@@ -1,7 +1,7 @@
 From 5a9994f5ae69448ad604e8184bd2ee8e437ffbca Mon Sep 17 00:00:00 2001
 From: Brian Behlendorf <behlendorf1@llnl.gov>
 Date: Mon, 11 Oct 2021 10:54:39 -0700
-Subject: [PATCH 05/18] Export minimal zfs_refcount interfaces
+Subject: [PATCH] Export minimal zfs_refcount interfaces
 
 Lustre makes light use of the zfs_refcount interfaces which
 isn't a problem when using a non-debug build of OpenZFS. However,

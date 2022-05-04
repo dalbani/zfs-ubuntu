@@ -1,8 +1,8 @@
 From e9cd90f6e5953df79ae5db84e3b23f339d6098f7 Mon Sep 17 00:00:00 2001
 From: Mark Johnston <markj@FreeBSD.org>
 Date: Thu, 7 Apr 2022 17:11:00 -0400
-Subject: [PATCH 13/18] FreeBSD: Parameterize ZFS_ENTER/ZFS_VERIFY_VP with an
- error code
+Subject: [PATCH] FreeBSD: Parameterize ZFS_ENTER/ZFS_VERIFY_VP with an error
+ code
 
 For legacy reasons, a couple of VOPs have to return error numbers that
 don't come from the usual errno namespace.  To handle the cases where
