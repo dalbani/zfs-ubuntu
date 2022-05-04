@@ -1,7 +1,7 @@
 From fe6f2651f55de3bf68ac4729386b5e85aa23a447 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
 Date: Tue, 30 Nov 2021 17:29:50 +0100
-Subject: [PATCH 03/18] etc/systemd/zfs-mount-generator: serialise, handle
+Subject: [PATCH] etc/systemd/zfs-mount-generator: serialise, handle
  keylocation=http[s]://
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

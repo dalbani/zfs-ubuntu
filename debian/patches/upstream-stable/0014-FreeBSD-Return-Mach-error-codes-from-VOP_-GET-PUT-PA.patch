@@ -1,8 +1,7 @@
 From b7546f92eaeb295cf0302662773792a2a8d359a5 Mon Sep 17 00:00:00 2001
 From: Mark Johnston <markj@FreeBSD.org>
 Date: Thu, 7 Apr 2022 17:13:18 -0400
-Subject: [PATCH 14/18] FreeBSD: Return Mach error codes from
- VOP_(GET|PUT)PAGES
+Subject: [PATCH] FreeBSD: Return Mach error codes from VOP_(GET|PUT)PAGES
 
 FreeBSD's memory management system uses its own error numbers and gets
 confused when these VOPs return EIO.

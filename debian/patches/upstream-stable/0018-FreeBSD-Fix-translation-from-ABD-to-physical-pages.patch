@@ -1,7 +1,7 @@
 From 972637dc06a04432dc58e240b8ef3e9f538b98bb Mon Sep 17 00:00:00 2001
 From: Alexander Motin <mav@FreeBSD.org>
 Date: Mon, 18 Apr 2022 20:25:49 -0400
-Subject: [PATCH 18/18] FreeBSD: Fix translation from ABD to physical pages.
+Subject: [PATCH] FreeBSD: Fix translation from ABD to physical pages.
 
 In hypothetical case of non-linear ABD with single segment, multiple
 to page size but not aligned to it, vdev_geom_fill_unmap_cb() could

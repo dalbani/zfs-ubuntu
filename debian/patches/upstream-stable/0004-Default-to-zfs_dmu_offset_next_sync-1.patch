@@ -1,7 +1,7 @@
 From 9f6943504aec36f897f814fb7ae5987425436b11 Mon Sep 17 00:00:00 2001
 From: Brian Behlendorf <behlendorf1@llnl.gov>
 Date: Tue, 30 Nov 2021 10:38:09 -0800
-Subject: [PATCH 04/18] Default to zfs_dmu_offset_next_sync=1
+Subject: [PATCH] Default to zfs_dmu_offset_next_sync=1
 
 Strict hole reporting was previously disabled by default as a
 performance optimization.  However, this has lead to confusion

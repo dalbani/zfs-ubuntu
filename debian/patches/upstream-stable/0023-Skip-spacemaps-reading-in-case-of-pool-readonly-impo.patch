@@ -1,0 +1,128 @@
+From ce8d41ef75e1667710a5aeb393877c7ed4b34576 Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Thu, 28 Apr 2022 16:47:12 -0700
+Subject: [PATCH] Skip spacemaps reading in case of pool readonly import
+
+The only zdb utility require to read metaslab-related data during
+read-only pool import because of spacemaps validation. Add global
+variable which will allow zdb read spacemaps in case of readonly
+import mode.
+
+Reviewed-by: Serapheim Dimitropoulos <serapheim@delphix.com>
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Fedor Uporov <fuporov.vstack@gmail.com>
+Closes #9095
+Closes #12687
+---
+ cmd/zdb/zdb.c          | 6 ++++++
+ include/sys/spa_impl.h | 1 +
+ module/zfs/metaslab.c  | 6 ++++--
+ module/zfs/spa.c       | 7 +++++++
+ module/zfs/vdev.c      | 6 ++++++
+ 5 files changed, 24 insertions(+), 2 deletions(-)
+
+diff --git a/cmd/zdb/zdb.c b/cmd/zdb/zdb.c
+index 9de41cef20..75688205fa 100644
+--- a/cmd/zdb/zdb.c
++++ b/cmd/zdb/zdb.c
+@@ -110,6 +110,7 @@ extern int zfs_recover;
+ extern unsigned long zfs_arc_meta_min, zfs_arc_meta_limit;
+ extern int zfs_vdev_async_read_max_active;
+ extern boolean_t spa_load_verify_dryrun;
++extern boolean_t spa_mode_readable_spacemaps;
+ extern int zfs_reconstruct_indirect_combinations_max;
+ extern int zfs_btree_verify_intensity;
+ 
+@@ -8469,6 +8470,11 @@ main(int argc, char **argv)
+ 	 */
+ 	spa_load_verify_dryrun = B_TRUE;
+ 
++	/*
++	 * ZDB should have ability to read spacemaps.
++	 */
++	spa_mode_readable_spacemaps = B_TRUE;
++
+ 	kernel_init(SPA_MODE_READ);
+ 
+ 	if (dump_all)
+diff --git a/include/sys/spa_impl.h b/include/sys/spa_impl.h
+index cb2c49e585..c8987e2e67 100644
+--- a/include/sys/spa_impl.h
++++ b/include/sys/spa_impl.h
+@@ -370,6 +370,7 @@ struct spa {
+ 	boolean_t	spa_is_root;		/* pool is root */
+ 	int		spa_minref;		/* num refs when first opened */
+ 	spa_mode_t	spa_mode;		/* SPA_MODE_{READ|WRITE} */
++	boolean_t	spa_read_spacemaps;	/* spacemaps available if ro */
+ 	spa_log_state_t spa_log_state;		/* log state */
+ 	uint64_t	spa_autoexpand;		/* lun expansion on/off */
+ 	ddt_t		*spa_ddt[ZIO_CHECKSUM_FUNCTIONS]; /* in-core DDTs */
+diff --git a/module/zfs/metaslab.c b/module/zfs/metaslab.c
+index f367bea982..9e216c38d9 100644
+--- a/module/zfs/metaslab.c
++++ b/module/zfs/metaslab.c
+@@ -2659,7 +2659,8 @@ metaslab_init(metaslab_group_t *mg, uint64_t id, uint64_t object,
+ 
+ 	/*
+ 	 * We only open space map objects that already exist. All others
+-	 * will be opened when we finally allocate an object for it.
++	 * will be opened when we finally allocate an object for it. For
++	 * readonly pools there is no need to open the space map object.
+ 	 *
+ 	 * Note:
+ 	 * When called from vdev_expand(), we can't call into the DMU as
+@@ -2668,7 +2669,8 @@ metaslab_init(metaslab_group_t *mg, uint64_t id, uint64_t object,
+ 	 * that case, the object parameter is zero though, so we won't
+ 	 * call into the DMU.
+ 	 */
+-	if (object != 0) {
++	if (object != 0 && !(spa->spa_mode == SPA_MODE_READ &&
++	    !spa->spa_read_spacemaps)) {
+ 		error = space_map_open(&ms->ms_sm, mos, object, ms->ms_start,
+ 		    ms->ms_size, vd->vdev_ashift);
+ 
+diff --git a/module/zfs/spa.c b/module/zfs/spa.c
+index 7c49ced999..dfa73483ac 100644
+--- a/module/zfs/spa.c
++++ b/module/zfs/spa.c
+@@ -180,6 +180,12 @@ boolean_t	spa_create_process = B_TRUE;	/* no process ==> no sysdc */
+  */
+ boolean_t	spa_load_verify_dryrun = B_FALSE;
+ 
++/*
++ * Allow read spacemaps in case of readonly import (spa_mode == SPA_MODE_READ).
++ * This is used by zdb for spacemaps verification.
++ */
++boolean_t	spa_mode_readable_spacemaps = B_FALSE;
++
+ /*
+  * This (illegal) pool name is used when temporarily importing a spa_t in order
+  * to get the vdev stats associated with the imported devices.
+@@ -1241,6 +1247,7 @@ spa_activate(spa_t *spa, spa_mode_t mode)
+ 
+ 	spa->spa_state = POOL_STATE_ACTIVE;
+ 	spa->spa_mode = mode;
++	spa->spa_read_spacemaps = spa_mode_readable_spacemaps;
+ 
+ 	spa->spa_normal_class = metaslab_class_create(spa, zfs_metaslab_ops);
+ 	spa->spa_log_class = metaslab_class_create(spa, zfs_metaslab_ops);
+diff --git a/module/zfs/vdev.c b/module/zfs/vdev.c
+index 57dcfe7233..a323b90a26 100644
+--- a/module/zfs/vdev.c
++++ b/module/zfs/vdev.c
+@@ -3147,6 +3147,12 @@ vdev_dtl_load(vdev_t *vd)
+ 	if (vd->vdev_ops->vdev_op_leaf && vd->vdev_dtl_object != 0) {
+ 		ASSERT(vdev_is_concrete(vd));
+ 
++		/*
++		 * If the dtl cannot be sync'd there is no need to open it.
++		 */
++		if (spa->spa_mode == SPA_MODE_READ && !spa->spa_read_spacemaps)
++			return (0);
++
+ 		error = space_map_open(&vd->vdev_dtl_sm, mos,
+ 		    vd->vdev_dtl_object, 0, -1ULL, 0);
+ 		if (error)
+-- 
+2.32.0
+

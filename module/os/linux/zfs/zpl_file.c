@@ -33,8 +33,12 @@
 #include <sys/zfs_vfsops.h>
 #include <sys/zfs_vnops.h>
 #include <sys/zfs_project.h>
-#ifdef HAVE_VFS_SET_PAGE_DIRTY_NOBUFFERS
+#if defined(HAVE_VFS_SET_PAGE_DIRTY_NOBUFFERS) || \
+    defined(HAVE_VFS_FILEMAP_DIRTY_FOLIO)
 #include <linux/pagemap.h>
+#endif
+#ifdef HAVE_VFS_FILEMAP_DIRTY_FOLIO
+#include <linux/writeback.h>
 #endif
 
 /*
@@ -412,6 +416,8 @@ zpl_aio_write(struct kiocb *kiocb, const struct iovec *iov,
 	ret = generic_write_checks(filp, &pos, &count, S_ISBLK(ip->i_mode));
 	if (ret)
 		return (ret);
+
+	kiocb->ki_pos = pos;
 
 	zfs_uio_t uio;
 	zfs_uio_iovec_init(&uio, iov, nr_segs, kiocb->ki_pos, UIO_USERSPACE,
@@ -1057,6 +1063,9 @@ const struct address_space_operations zpl_address_space_operations = {
 	.direct_IO	= zpl_direct_IO,
 #ifdef HAVE_VFS_SET_PAGE_DIRTY_NOBUFFERS
 	.set_page_dirty = __set_page_dirty_nobuffers,
+#endif
+#ifdef HAVE_VFS_FILEMAP_DIRTY_FOLIO
+	.dirty_folio	= filemap_dirty_folio,
 #endif
 };
 

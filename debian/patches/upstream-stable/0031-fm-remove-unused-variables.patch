@@ -1,0 +1,43 @@
+From a175fe82e64b3453eadce3c9165d73959a270ed0 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Mon, 27 Dec 2021 19:33:38 +0100
+Subject: [PATCH] fm: remove unused variables
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Reviewed-by: Matthew Ahrens <mahrens@delphix.com>
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #12917
+---
+ module/zfs/zfs_fm.c | 6 ------
+ 1 file changed, 6 deletions(-)
+
+diff --git a/module/zfs/zfs_fm.c b/module/zfs/zfs_fm.c
+index 87f793cb4e..a05ff73304 100644
+--- a/module/zfs/zfs_fm.c
++++ b/module/zfs/zfs_fm.c
+@@ -825,9 +825,6 @@ annotate_ecksum(nvlist_t *ereport, zio_bad_cksum_t *info,
+ 	const uint64_t *good;
+ 	const uint64_t *bad;
+ 
+-	uint64_t allset = 0;
+-	uint64_t allcleared = 0;
+-
+ 	size_t nui64s = size / sizeof (uint64_t);
+ 
+ 	size_t inline_size;
+@@ -929,9 +926,6 @@ annotate_ecksum(nvlist_t *ereport, zio_bad_cksum_t *info,
+ 			// bits set in good, but not in bad
+ 			cleared = (good[idx] & (~bad[idx]));
+ 
+-			allset |= set;
+-			allcleared |= cleared;
+-
+ 			if (!no_inline) {
+ 				ASSERT3U(offset, <, inline_size);
+ 				eip->zei_bits_set[offset] = set;
+-- 
+2.32.0
+

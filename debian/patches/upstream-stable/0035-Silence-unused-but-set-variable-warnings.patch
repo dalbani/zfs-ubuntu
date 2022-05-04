@@ -1,0 +1,54 @@
+From 4c9c96aba402517f18d06cbd593c55a7f50d7360 Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Fri, 29 Apr 2022 10:11:20 -0700
+Subject: [PATCH] Silence unused-but-set-variable warnings
+
+Clang 13.0.0 added support for `Wunused-but-set-parameter` and
+`-Wunused-but-set-variable` which correctly detects two unused
+variables in zstd resulting in a build failure.  This commit
+annotates these instances accordingly.
+
+  https://releases.llvm.org/13.0.1/tools/clang/docs/ReleaseNotes.html#id6
+
+In FSE_createCTable(), malloc() is intentionally defined as NULL when
+compiled in the kernel so the variable is unused.
+
+  zstd/lib/compress/fse_compress.c:307:12: error: variable 'size'
+  set but not used [-Werror,-Wunused-but-set-variable]
+
+Additionally, in ZSTD_seqDecompressedSize() the assert is compiled
+out similarly resulting in an unused variable.
+
+  zstd/lib/compress/zstd_compress_superblock.c:412:12: error: variable
+  'litLengthSum' set but not used [-Werror,-Wunused-but-set-variable]
+
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+---
+ module/zstd/lib/zstd.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/module/zstd/lib/zstd.c b/module/zstd/lib/zstd.c
+index 2766e5b74f..9dbba5b82c 100644
+--- a/module/zstd/lib/zstd.c
++++ b/module/zstd/lib/zstd.c
+@@ -7781,7 +7781,7 @@ size_t FSE_writeNCount (void* buffer, size_t bufferSize,
+ 
+ FSE_CTable* FSE_createCTable (unsigned maxSymbolValue, unsigned tableLog)
+ {
+-    size_t size;
++    size_t size __attribute__ ((unused));
+     if (tableLog > FSE_TABLELOG_ABSOLUTE_MAX) tableLog = FSE_TABLELOG_ABSOLUTE_MAX;
+     size = FSE_CTABLE_SIZE_U32 (tableLog, maxSymbolValue) * sizeof(U32);
+     return (FSE_CTable*)malloc(size);
+@@ -12115,7 +12115,7 @@ static size_t ZSTD_seqDecompressedSize(seqStore_t const* seqStore, const seqDef*
+     const seqDef* const send = sequences + nbSeq;
+     const seqDef* sp = sstart;
+     size_t matchLengthSum = 0;
+-    size_t litLengthSum = 0;
++    size_t litLengthSum __attribute__ ((unused)) = 0;
+     while (send-sp > 0) {
+         ZSTD_sequenceLength const seqLen = ZSTD_getSequenceLength(seqStore, sp);
+         litLengthSum += seqLen.litLength;
+-- 
+2.32.0
+

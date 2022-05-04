@@ -1,8 +1,7 @@
 From 35ddd8ee2e5fdbaa5b0d94c063bbc1a79ab12cb1 Mon Sep 17 00:00:00 2001
 From: Riccardo Schirone <rschirone91@gmail.com>
 Date: Sat, 2 Apr 2022 01:15:25 +0200
-Subject: [PATCH 10/18] Linux 5.18 compat: use
- address_space_operations->readahead
+Subject: [PATCH] Linux 5.18 compat: use address_space_operations->readahead
 
 ->readpages was removed and replaced by ->readahead. Define
 zpl_readahead for kernels that don't have ->readpages.

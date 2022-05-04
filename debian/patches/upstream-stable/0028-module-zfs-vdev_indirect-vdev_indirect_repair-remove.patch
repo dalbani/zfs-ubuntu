@@ -1,0 +1,36 @@
+From 986d64cccac37883d0894365596ad95f8676a04b Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Thu, 3 Jun 2021 18:32:38 +0200
+Subject: [PATCH] module/zfs: vdev_indirect: vdev_indirect_repair: remove
+ unused variable
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Reviewed-by: Ryan Moeller <ryan@iXsystems.com>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #12187
+---
+ module/zfs/vdev_indirect.c | 5 -----
+ 1 file changed, 5 deletions(-)
+
+diff --git a/module/zfs/vdev_indirect.c b/module/zfs/vdev_indirect.c
+index b541058d94..8762855d46 100644
+--- a/module/zfs/vdev_indirect.c
++++ b/module/zfs/vdev_indirect.c
+@@ -1423,11 +1423,6 @@ vdev_indirect_repair(zio_t *zio)
+ {
+ 	indirect_vsd_t *iv = zio->io_vsd;
+ 
+-	enum zio_flag flags = ZIO_FLAG_IO_REPAIR;
+-
+-	if (!(zio->io_flags & (ZIO_FLAG_SCRUB | ZIO_FLAG_RESILVER)))
+-		flags |= ZIO_FLAG_SELF_HEAL;
+-
+ 	if (!spa_writeable(zio->io_spa))
+ 		return;
+ 
+-- 
+2.32.0
+

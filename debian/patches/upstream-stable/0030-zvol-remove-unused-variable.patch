@@ -1,0 +1,40 @@
+From b8e1366ee652ac5bf1943446140cc8ba4695e1e7 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Mon, 27 Dec 2021 19:33:16 +0100
+Subject: [PATCH] zvol: remove unused variable
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Reviewed-by: Matthew Ahrens <mahrens@delphix.com>
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #12917
+---
+ module/os/freebsd/zfs/zvol_os.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/module/os/freebsd/zfs/zvol_os.c b/module/os/freebsd/zfs/zvol_os.c
+index 0b347e7f98..09c35b3719 100644
+--- a/module/os/freebsd/zfs/zvol_os.c
++++ b/module/os/freebsd/zfs/zvol_os.c
+@@ -1063,7 +1063,7 @@ zvol_cdev_ioctl(struct cdev *dev, ulong_t cmd, caddr_t data,
+ 	zvol_state_t *zv;
+ 	zfs_locked_range_t *lr;
+ 	off_t offset, length;
+-	int i, error;
++	int error;
+ 	boolean_t sync;
+ 
+ 	zv = dev->si_drv2;
+@@ -1072,7 +1072,6 @@ zvol_cdev_ioctl(struct cdev *dev, ulong_t cmd, caddr_t data,
+ 	KASSERT(zv->zv_open_count > 0,
+ 	    ("Device with zero access count in %s", __func__));
+ 
+-	i = IOCPARM_LEN(cmd);
+ 	switch (cmd) {
+ 	case DIOCGSECTORSIZE:
+ 		*(uint32_t *)data = DEV_BSIZE;
+-- 
+2.32.0
+
