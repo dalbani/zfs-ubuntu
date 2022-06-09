@@ -1,0 +1,113 @@
+From fc41be5a8def215c065f9d51cbcacbb2e9519c9d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Mon, 4 Apr 2022 23:39:18 +0200
+Subject: [PATCH] contrib: dracut: don't require essentials to be under the
+ same encroot
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Upstream-commit: 30c6dce7f7d3808b544ac1c3dbcb4d32c9831c60
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #13291
+---
+ contrib/dracut/90zfs/mount-zfs.sh.in    |  1 +
+ contrib/dracut/90zfs/zfs-load-key.sh.in | 71 ++++++++++++++-----------
+ 2 files changed, 40 insertions(+), 32 deletions(-)
+
+diff --git a/contrib/dracut/90zfs/mount-zfs.sh.in b/contrib/dracut/90zfs/mount-zfs.sh.in
+index 5d02a8d745..fa9f1bb767 100755
+--- a/contrib/dracut/90zfs/mount-zfs.sh.in
++++ b/contrib/dracut/90zfs/mount-zfs.sh.in
+@@ -93,6 +93,7 @@ if ! zpool get -Ho name "${ZFS_POOL}" > /dev/null 2>&1; then
+ fi
+ 
+ # Load keys if we can or if we need to
++# TODO: for_relevant_root_children like in zfs-load-key.sh.in
+ if [ "$(zpool get -Ho value feature@encryption "${ZFS_POOL}")" = 'active' ]; then
+ 	# if the root dataset has encryption enabled
+ 	ENCRYPTIONROOT="$(zfs get -Ho value encryptionroot "${ZFS_DATASET}")"
+diff --git a/contrib/dracut/90zfs/zfs-load-key.sh.in b/contrib/dracut/90zfs/zfs-load-key.sh.in
+index 97e9246d46..d916f43b4e 100755
+--- a/contrib/dracut/90zfs/zfs-load-key.sh.in
++++ b/contrib/dracut/90zfs/zfs-load-key.sh.in
+@@ -22,36 +22,43 @@ fi
+ 
+ [ "$(zpool get -Ho value feature@encryption "${BOOTFS%%/*}")" = 'active' ] || return 0
+ 
+-ENCRYPTIONROOT="$(zfs get -Ho value encryptionroot "${BOOTFS}")"
+-[ "${ENCRYPTIONROOT}" = "-" ] && return 0
+-
+-[ "$(zfs get -Ho value keystatus "${ENCRYPTIONROOT}")" = "unavailable" ] || return 0
+-
+-KEYLOCATION="$(zfs get -H -o value keylocation "${ENCRYPTIONROOT}")"
+-case "${KEYLOCATION%%://*}" in
+-    prompt)
+-        for _ in 1 2 3; do
+-            systemd-ask-password --no-tty "Encrypted ZFS password for ${BOOTFS}" | zfs load-key "${ENCRYPTIONROOT}" && break
+-        done
+-        ;;
+-    http*)
+-        systemctl start network-online.target
+-        zfs load-key "${ENCRYPTIONROOT}"
+-        ;;
+-    file)
+-        KEYFILE="${KEYLOCATION#file://}"
+-        [ -r "${KEYFILE}" ] || udevadm settle
+-        [ -r "${KEYFILE}" ] || {
+-            info "ZFS: Waiting for key ${KEYFILE} for ${ENCRYPTIONROOT}..."
+-            for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+-                sleep 0.5s
+-                [ -r "${KEYFILE}" ] && break
++_load_key_cb() {
++    dataset="$1"
++
++    ENCRYPTIONROOT="$(zfs get -Ho value encryptionroot "${dataset}")"
++    [ "${ENCRYPTIONROOT}" = "-" ] && return 0
++
++    [ "$(zfs get -Ho value keystatus "${ENCRYPTIONROOT}")" = "unavailable" ] || return 0
++
++    KEYLOCATION="$(zfs get -Ho value keylocation "${ENCRYPTIONROOT}")"
++    case "${KEYLOCATION%%://*}" in
++        prompt)
++            for _ in 1 2 3; do
++                systemd-ask-password --no-tty "Encrypted ZFS password for ${dataset}" | zfs load-key "${ENCRYPTIONROOT}" && break
+             done
+-        }
+-        [ -r "${KEYFILE}" ] || warn "ZFS: Key ${KEYFILE} for ${ENCRYPTIONROOT} hasn't appeared. Trying anyway."
+-        zfs load-key "${ENCRYPTIONROOT}"
+-        ;;
+-    *)
+-        zfs load-key "${ENCRYPTIONROOT}"
+-        ;;
+-esac
++            ;;
++        http*)
++            systemctl start network-online.target
++            zfs load-key "${ENCRYPTIONROOT}"
++            ;;
++        file)
++            KEYFILE="${KEYLOCATION#file://}"
++            [ -r "${KEYFILE}" ] || udevadm settle
++            [ -r "${KEYFILE}" ] || {
++                info "ZFS: Waiting for key ${KEYFILE} for ${ENCRYPTIONROOT}..."
++                for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
++                    sleep 0.5s
++                    [ -r "${KEYFILE}" ] && break
++                done
++            }
++            [ -r "${KEYFILE}" ] || warn "ZFS: Key ${KEYFILE} for ${ENCRYPTIONROOT} hasn't appeared. Trying anyway."
++            zfs load-key "${ENCRYPTIONROOT}"
++            ;;
++        *)
++            zfs load-key "${ENCRYPTIONROOT}"
++            ;;
++    esac
++}
++
++_load_key_cb "$BOOTFS"
++for_relevant_root_children "$BOOTFS" _load_key_cb
+-- 
+2.32.0
+

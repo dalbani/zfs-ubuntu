@@ -1,0 +1,34 @@
+From 0a688b234540a5d54aa47c9a482042f9bf9aea10 Mon Sep 17 00:00:00 2001
+From: Umer Saleem <usaleem@ixsystems.com>
+Date: Wed, 25 May 2022 21:22:11 +0500
+Subject: [PATCH] rpm: Keep debug symbols if configured with
+ '--enable-debuginfo'
+
+Do not strip debug information from packages if '--enable-debuginfo' is
+configured.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Umer Saleem <usaleem@ixsystems.com>
+Closes #13500
+---
+ config/zfs-build.m4 | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/config/zfs-build.m4 b/config/zfs-build.m4
+index 126f78476b..c60eb01355 100644
+--- a/config/zfs-build.m4
++++ b/config/zfs-build.m4
+@@ -323,6 +323,10 @@ AC_DEFUN([ZFS_AC_RPM], [
+ 	RPM_DEFINE_COMMON=${RPM_DEFINE_COMMON}' --define "$(DEBUG_KMEM_TRACKING_ZFS) 1"'
+ 	RPM_DEFINE_COMMON=${RPM_DEFINE_COMMON}' --define "$(ASAN_ZFS) 1"'
+ 
++	AS_IF([test "x$enable_debuginfo" = xyes], [
++		RPM_DEFINE_COMMON=${RPM_DEFINE_COMMON}' --define "__strip /bin/true"'
++	])
++
+ 	RPM_DEFINE_UTIL=' --define "_initconfdir $(initconfdir)"'
+ 
+ 	dnl # Make the next three RPM_DEFINE_UTIL additions conditional, since
+-- 
+2.32.0
+

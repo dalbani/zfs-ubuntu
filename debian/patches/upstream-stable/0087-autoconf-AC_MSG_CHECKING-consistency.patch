@@ -1,0 +1,203 @@
+From db530f6aa01b2d11c72af7e49c90b153531e22a5 Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Tue, 31 May 2022 16:42:49 -0700
+Subject: [PATCH] autoconf: AC_MSG_CHECKING consistency
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Make the wording more consistent for the kernel AC_MSG_CHECKING
+output (e.g. "checking whether ...".).  Additionally, group some
+of the VFS interface checks with the others.  No functional change.
+
+Reviewed-by: Tony Hutter <hutter2@llnl.gov>
+Reviewed-by: Attila Fülöp <attila@fueloep.org>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #13529
+---
+ config/kernel-bio.m4                     |  4 ++--
+ config/kernel-pagemap-folio_wait_bit.m4  |  2 +-
+ config/kernel-readpages.m4               |  2 +-
+ config/kernel-shrink.m4                  | 10 +++++-----
+ config/kernel-sysfs.m4                   |  2 +-
+ config/kernel-vfs-filemap_dirty_folio.m4 |  2 +-
+ config/kernel-vfs-read_folio.m4          |  2 +-
+ config/kernel-vfs-set_page_dirty.m4      |  2 +-
+ config/kernel.m4                         |  8 ++++----
+ 9 files changed, 17 insertions(+), 17 deletions(-)
+
+diff --git a/config/kernel-bio.m4 b/config/kernel-bio.m4
+index b5d2544815..18620ca5b7 100644
+--- a/config/kernel-bio.m4
++++ b/config/kernel-bio.m4
+@@ -464,7 +464,7 @@ AC_DEFUN([ZFS_AC_KERNEL_SRC_BLK_CGROUP_HEADER], [
+ ])
+ 
+ AC_DEFUN([ZFS_AC_KERNEL_BLK_CGROUP_HEADER], [
+-	AC_MSG_CHECKING([for existence of linux/blk-cgroup.h])
++	AC_MSG_CHECKING([whether linux/blk-cgroup.h exists])
+ 	ZFS_LINUX_TEST_RESULT([blk_cgroup_header],[
+ 		AC_MSG_RESULT(yes)
+ 		AC_DEFINE(HAVE_LINUX_BLK_CGROUP_HEADER, 1,
+@@ -500,7 +500,7 @@ AC_DEFUN([ZFS_AC_KERNEL_SRC_BIO_ALLOC_4ARG], [
+ ])
+ 
+ AC_DEFUN([ZFS_AC_KERNEL_BIO_ALLOC_4ARG], [
+-	AC_MSG_CHECKING([for 4-argument bio_alloc()])
++	AC_MSG_CHECKING([whether bio_alloc() wants 4 args])
+ 	ZFS_LINUX_TEST_RESULT([bio_alloc_4arg],[
+ 		AC_MSG_RESULT(yes)
+ 		AC_DEFINE([HAVE_BIO_ALLOC_4ARG], 1, [bio_alloc() takes 4 arguments])
+diff --git a/config/kernel-pagemap-folio_wait_bit.m4 b/config/kernel-pagemap-folio_wait_bit.m4
+index e0aaa4a574..12d8841f51 100644
+--- a/config/kernel-pagemap-folio_wait_bit.m4
++++ b/config/kernel-pagemap-folio_wait_bit.m4
+@@ -15,7 +15,7 @@ AC_DEFUN([ZFS_AC_KERNEL_SRC_PAGEMAP_FOLIO_WAIT_BIT], [
+ ])
+ 
+ AC_DEFUN([ZFS_AC_KERNEL_PAGEMAP_FOLIO_WAIT_BIT], [
+-	AC_MSG_CHECKING([folio_wait_bit() exists])
++	AC_MSG_CHECKING([whether folio_wait_bit() exists])
+ 	ZFS_LINUX_TEST_RESULT([pagemap_has_folio_wait_bit], [
+ 		AC_MSG_RESULT([yes])
+ 		AC_DEFINE(HAVE_PAGEMAP_FOLIO_WAIT_BIT, 1,
+diff --git a/config/kernel-readpages.m4 b/config/kernel-readpages.m4
+index 0bf67ffd93..be65a0d5e4 100644
+--- a/config/kernel-readpages.m4
++++ b/config/kernel-readpages.m4
+@@ -14,7 +14,7 @@ AC_DEFUN([ZFS_AC_KERNEL_SRC_VFS_READPAGES], [
+ ])
+ 
+ AC_DEFUN([ZFS_AC_KERNEL_VFS_READPAGES], [
+-	AC_MSG_CHECKING([address_space_operations->readpages exists])
++	AC_MSG_CHECKING([whether aops->readpages exists])
+ 	ZFS_LINUX_TEST_RESULT([vfs_has_readpages], [
+ 		AC_MSG_RESULT([yes])
+ 		AC_DEFINE(HAVE_VFS_READPAGES, 1,
+diff --git a/config/kernel-shrink.m4 b/config/kernel-shrink.m4
+index a40c86d5c5..8cf0f2761b 100644
+--- a/config/kernel-shrink.m4
++++ b/config/kernel-shrink.m4
+@@ -84,7 +84,7 @@ AC_DEFUN([ZFS_AC_KERNEL_SRC_SHRINKER_CALLBACK], [
+ AC_DEFUN([ZFS_AC_KERNEL_SHRINKER_CALLBACK],[
+ 	dnl #
+ 	dnl # 3.0 - 3.11 API change
+-	dnl # ->shrink(struct shrinker *, struct shrink_control *sc)
++	dnl # cs->shrink(struct shrinker *, struct shrink_control *sc)
+ 	dnl #
+ 	AC_MSG_CHECKING([whether new 2-argument shrinker exists])
+ 	ZFS_LINUX_TEST_RESULT([shrinker_cb_shrink_control], [
+@@ -96,14 +96,14 @@ AC_DEFUN([ZFS_AC_KERNEL_SHRINKER_CALLBACK],[
+ 
+ 		dnl #
+ 		dnl # 3.12 API change,
+-		dnl # ->shrink() is logically split in to
+-		dnl # ->count_objects() and ->scan_objects()
++		dnl # cs->shrink() is logically split in to
++		dnl # cs->count_objects() and cs->scan_objects()
+ 		dnl #
+-		AC_MSG_CHECKING([whether ->count_objects callback exists])
++		AC_MSG_CHECKING([whether cs->count_objects callback exists])
+ 		ZFS_LINUX_TEST_RESULT([shrinker_cb_shrink_control_split], [
+ 			AC_MSG_RESULT(yes)
+ 			AC_DEFINE(HAVE_SPLIT_SHRINKER_CALLBACK, 1,
+-			    [->count_objects exists])
++			    [cs->count_objects exists])
+ 		],[
+ 			ZFS_LINUX_TEST_ERROR([shrinker])
+ 		])
+diff --git a/config/kernel-sysfs.m4 b/config/kernel-sysfs.m4
+index 668def5fe6..bbc77c8fc5 100644
+--- a/config/kernel-sysfs.m4
++++ b/config/kernel-sysfs.m4
+@@ -19,7 +19,7 @@ AC_DEFUN([ZFS_AC_KERNEL_SRC_SYSFS_DEFAULT_GROUPS], [
+ ])
+ 
+ AC_DEFUN([ZFS_AC_KERNEL_SYSFS_DEFAULT_GROUPS], [
+-	AC_MSG_CHECKING([for struct kobj_type.default_groups])
++	AC_MSG_CHECKING([whether struct kobj_type.default_groups exists])
+ 	ZFS_LINUX_TEST_RESULT([sysfs_default_groups],[
+ 		AC_MSG_RESULT(yes)
+ 		AC_DEFINE([HAVE_SYSFS_DEFAULT_GROUPS], 1, [struct kobj_type has default_groups])
+diff --git a/config/kernel-vfs-filemap_dirty_folio.m4 b/config/kernel-vfs-filemap_dirty_folio.m4
+index 8728790029..729ca670da 100644
+--- a/config/kernel-vfs-filemap_dirty_folio.m4
++++ b/config/kernel-vfs-filemap_dirty_folio.m4
+@@ -19,7 +19,7 @@ AC_DEFUN([ZFS_AC_KERNEL_VFS_FILEMAP_DIRTY_FOLIO], [
+ 	dnl # Linux 5.18 uses filemap_dirty_folio in lieu of
+ 	dnl # ___set_page_dirty_nobuffers
+ 	dnl #
+-	AC_MSG_CHECKING([filemap_dirty_folio exists])
++	AC_MSG_CHECKING([whether filemap_dirty_folio exists])
+ 	ZFS_LINUX_TEST_RESULT([vfs_has_filemap_dirty_folio], [
+ 		AC_MSG_RESULT([yes])
+ 		AC_DEFINE(HAVE_VFS_FILEMAP_DIRTY_FOLIO, 1,
+diff --git a/config/kernel-vfs-read_folio.m4 b/config/kernel-vfs-read_folio.m4
+index 234d1212ab..9ca0faff21 100644
+--- a/config/kernel-vfs-read_folio.m4
++++ b/config/kernel-vfs-read_folio.m4
+@@ -22,7 +22,7 @@ AC_DEFUN([ZFS_AC_KERNEL_VFS_READ_FOLIO], [
+ 	dnl #
+ 	dnl # Linux 5.19 uses read_folio in lieu of readpage
+ 	dnl #
+-	AC_MSG_CHECKING([read_folio exists])
++	AC_MSG_CHECKING([whether read_folio exists])
+ 	ZFS_LINUX_TEST_RESULT([vfs_has_read_folio], [
+ 		AC_MSG_RESULT([yes])
+ 		AC_DEFINE(HAVE_VFS_READ_FOLIO, 1, [read_folio exists])
+diff --git a/config/kernel-vfs-set_page_dirty.m4 b/config/kernel-vfs-set_page_dirty.m4
+index a9d252e4e0..90cb28f368 100644
+--- a/config/kernel-vfs-set_page_dirty.m4
++++ b/config/kernel-vfs-set_page_dirty.m4
+@@ -23,7 +23,7 @@ AC_DEFUN([ZFS_AC_KERNEL_VFS_SET_PAGE_DIRTY_NOBUFFERS], [
+ 	dnl # Linux 5.14 change requires set_page_dirty() to be assigned
+ 	dnl # in address_space_operations()
+ 	dnl #
+-	AC_MSG_CHECKING([__set_page_dirty_nobuffers exists])
++	AC_MSG_CHECKING([whether __set_page_dirty_nobuffers exists])
+ 	ZFS_LINUX_TEST_RESULT([vfs_has_set_page_dirty_nobuffers], [
+ 		AC_MSG_RESULT([yes])
+ 		AC_DEFINE(HAVE_VFS_SET_PAGE_DIRTY_NOBUFFERS, 1,
+diff --git a/config/kernel.m4 b/config/kernel.m4
+index 2cb7ff900e..41492c19d8 100644
+--- a/config/kernel.m4
++++ b/config/kernel.m4
+@@ -106,6 +106,8 @@ AC_DEFUN([ZFS_AC_KERNEL_TEST_SRC], [
+ 	ZFS_AC_KERNEL_SRC_VFS_FSYNC_2ARGS
+ 	ZFS_AC_KERNEL_SRC_VFS_ITERATE
+ 	ZFS_AC_KERNEL_SRC_VFS_DIRECT_IO
++	ZFS_AC_KERNEL_SRC_VFS_READPAGES
++	ZFS_AC_KERNEL_SRC_VFS_SET_PAGE_DIRTY_NOBUFFERS
+ 	ZFS_AC_KERNEL_SRC_VFS_RW_ITERATE
+ 	ZFS_AC_KERNEL_SRC_VFS_GENERIC_WRITE_CHECKS
+ 	ZFS_AC_KERNEL_SRC_VFS_IOV_ITER
+@@ -136,8 +138,6 @@ AC_DEFUN([ZFS_AC_KERNEL_TEST_SRC], [
+ 	ZFS_AC_KERNEL_SRC_SIGINFO
+ 	ZFS_AC_KERNEL_SRC_SYSFS
+ 	ZFS_AC_KERNEL_SRC_SET_SPECIAL_STATE
+-	ZFS_AC_KERNEL_SRC_VFS_READPAGES
+-	ZFS_AC_KERNEL_SRC_VFS_SET_PAGE_DIRTY_NOBUFFERS
+ 	ZFS_AC_KERNEL_SRC_STANDALONE_LINUX_STDARG
+ 	ZFS_AC_KERNEL_SRC_PAGEMAP_FOLIO_WAIT_BIT
+ 	ZFS_AC_KERNEL_SRC_ADD_DISK
+@@ -223,6 +223,8 @@ AC_DEFUN([ZFS_AC_KERNEL_TEST_RESULT], [
+ 	ZFS_AC_KERNEL_VFS_FSYNC_2ARGS
+ 	ZFS_AC_KERNEL_VFS_ITERATE
+ 	ZFS_AC_KERNEL_VFS_DIRECT_IO
++	ZFS_AC_KERNEL_VFS_READPAGES
++	ZFS_AC_KERNEL_VFS_SET_PAGE_DIRTY_NOBUFFERS
+ 	ZFS_AC_KERNEL_VFS_RW_ITERATE
+ 	ZFS_AC_KERNEL_VFS_GENERIC_WRITE_CHECKS
+ 	ZFS_AC_KERNEL_VFS_IOV_ITER
+@@ -253,8 +255,6 @@ AC_DEFUN([ZFS_AC_KERNEL_TEST_RESULT], [
+ 	ZFS_AC_KERNEL_SIGINFO
+ 	ZFS_AC_KERNEL_SYSFS
+ 	ZFS_AC_KERNEL_SET_SPECIAL_STATE
+-	ZFS_AC_KERNEL_VFS_READPAGES
+-	ZFS_AC_KERNEL_VFS_SET_PAGE_DIRTY_NOBUFFERS
+ 	ZFS_AC_KERNEL_STANDALONE_LINUX_STDARG
+ 	ZFS_AC_KERNEL_PAGEMAP_FOLIO_WAIT_BIT
+ 	ZFS_AC_KERNEL_ADD_DISK
+-- 
+2.32.0
+

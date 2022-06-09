@@ -1,0 +1,51 @@
+From b551725df45311e2fe7d113f3d93232f73d50ae6 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Mon, 4 Apr 2022 20:59:53 +0200
+Subject: [PATCH] contrib: dracut: parse-zfs: stop pretending we support
+ FILESYSTEM=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+It was added in the original ae26d0465a ("Add dracut support") commit
+in 2011, and was then broken a bit later with the advent of
+dracut-zfs-generator, or maybe earlier as part of other churn
+
+Either way, it's broken, and has been in 2.0+ as well, and no-one
+complained. Stop pretending we support it at all
+
+Upstream-commit: 2c74617bcf76b305937097278b614443d47681a0
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #13291
+---
+ contrib/dracut/90zfs/parse-zfs.sh.in | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/contrib/dracut/90zfs/parse-zfs.sh.in b/contrib/dracut/90zfs/parse-zfs.sh.in
+index 42d19d57e9..0c3d06bfb0 100755
+--- a/contrib/dracut/90zfs/parse-zfs.sh.in
++++ b/contrib/dracut/90zfs/parse-zfs.sh.in
+@@ -29,18 +29,15 @@ case "${root}" in
+ 		info "ZFS: Enabling autodetection of bootfs after udev settles."
+ 		;;
+ 
+-	ZFS=*|zfs:*|FILESYSTEM=*)
++	ZFS=*|zfs:*)
+ 		# root is explicit ZFS root.  Parse it now.  We can handle
+ 		# a root=... param in any of the following formats:
+ 		# root=ZFS=rpool/ROOT
+ 		# root=zfs:rpool/ROOT
+-		# root=zfs:FILESYSTEM=rpool/ROOT
+-		# root=FILESYSTEM=rpool/ROOT
+ 		# root=ZFS=pool+with+space/ROOT+WITH+SPACE (translates to root=ZFS=pool with space/ROOT WITH SPACE)
+ 
+ 		# Strip down to just the pool/fs
+ 		root="${root#zfs:}"
+-		root="${root#FILESYSTEM=}"
+ 		root="zfs:${root#ZFS=}"
+ 		# switch + with spaces because kernel cmdline does not allow us to quote parameters
+ 		root=$(echo "$root" | tr '+' ' ')
+-- 
+2.32.0
+

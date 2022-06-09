@@ -1,0 +1,29 @@
+From fc18fa92c8cf3bd8febed784a15804e86aa08cb5 Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Tue, 31 May 2022 14:38:00 -0700
+Subject: [PATCH] Linux 5.18 compat: META
+
+Update the META file to reflect compatibility with the 5.18 kernel.
+
+Reviewed-by: George Melikov <mail@gmelikov.ru>
+Reviewed-by: Tony Hutter <hutter2@llnl.gov>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #13527
+---
+ META | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/META b/META
+index 76e59a4207..99f246b26c 100644
+--- a/META
++++ b/META
+@@ -6,5 +6,5 @@ Release:       1
+ Release-Tags:  relext
+ License:       CDDL
+ Author:        OpenZFS
+-Linux-Maximum: 5.17
++Linux-Maximum: 5.18
+ Linux-Minimum: 3.10
+-- 
+2.32.0
+

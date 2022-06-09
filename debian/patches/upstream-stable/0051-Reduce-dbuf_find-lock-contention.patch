@@ -1,0 +1,177 @@
+From bb29f1eb389bd634097762a27eadabebe230d373 Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Wed, 4 May 2022 11:17:29 -0700
+Subject: [PATCH] Reduce dbuf_find() lock contention
+
+Holding a dbuf is a common operation which can become highly contended
+in dbuf_find() when acquiring the dbuf hash mutex.  This is particularly
+true on Linux when reading/writing volumes since by default up to 32
+threads from the zvol_taskq may be taking a hold of the same dbuf.
+This should also be observable on FreeBSD as long as there are enough
+processes accessing the volume concurrently.
+
+This is further aggregrated by the fact that only the block id will
+be unique when calculating the dbuf hash for a single volume.  The
+objset id, object id, and level will be the same for data blocks.
+This has been observed to result in a somehwat less than uniform hash
+distribution and a longer than expected max hash chain depth (~20)
+on a large memory system (256 GB) using volumes.
+
+This commit improves the siutation by switching the hash mutex to
+an rwlock to allow concurrent lookups, and increasing DBUF_RWLOCKS
+from 2048 to 8192 to further reduce the odds of a hash collision.
+
+Reviewed-by: Tony Hutter <hutter2@llnl.gov>
+Reviewed-by: Alexander Motin <mav@FreeBSD.org>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #13405
+---
+ include/sys/dbuf.h      |  7 +++----
+ module/zfs/dbuf.c       | 26 +++++++++++++-------------
+ module/zfs/dbuf_stats.c |  4 ++--
+ 3 files changed, 18 insertions(+), 19 deletions(-)
+
+diff --git a/include/sys/dbuf.h b/include/sys/dbuf.h
+index d2c175af64..e7289c0fe1 100644
+--- a/include/sys/dbuf.h
++++ b/include/sys/dbuf.h
+@@ -321,13 +321,12 @@ typedef struct dmu_buf_impl {
+ 	uint8_t db_dirtycnt;
+ } dmu_buf_impl_t;
+ 
+-/* Note: the dbuf hash table is exposed only for the mdb module */
+-#define	DBUF_MUTEXES 2048
+-#define	DBUF_HASH_MUTEX(h, idx) (&(h)->hash_mutexes[(idx) & (DBUF_MUTEXES-1)])
++#define	DBUF_RWLOCKS 8192
++#define	DBUF_HASH_RWLOCK(h, idx) (&(h)->hash_rwlocks[(idx) & (DBUF_RWLOCKS-1)])
+ typedef struct dbuf_hash_table {
+ 	uint64_t hash_table_mask;
+ 	dmu_buf_impl_t **hash_table;
+-	kmutex_t hash_mutexes[DBUF_MUTEXES] ____cacheline_aligned;
++	krwlock_t hash_rwlocks[DBUF_RWLOCKS] ____cacheline_aligned;
+ } dbuf_hash_table_t;
+ 
+ typedef void (*dbuf_prefetch_fn)(void *, boolean_t);
+diff --git a/module/zfs/dbuf.c b/module/zfs/dbuf.c
+index 9ded9587c1..c960fc0988 100644
+--- a/module/zfs/dbuf.c
++++ b/module/zfs/dbuf.c
+@@ -338,18 +338,18 @@ dbuf_find(objset_t *os, uint64_t obj, uint8_t level, uint64_t blkid)
+ 	hv = dbuf_hash(os, obj, level, blkid);
+ 	idx = hv & h->hash_table_mask;
+ 
+-	mutex_enter(DBUF_HASH_MUTEX(h, idx));
++	rw_enter(DBUF_HASH_RWLOCK(h, idx), RW_READER);
+ 	for (db = h->hash_table[idx]; db != NULL; db = db->db_hash_next) {
+ 		if (DBUF_EQUAL(db, os, obj, level, blkid)) {
+ 			mutex_enter(&db->db_mtx);
+ 			if (db->db_state != DB_EVICTING) {
+-				mutex_exit(DBUF_HASH_MUTEX(h, idx));
++				rw_exit(DBUF_HASH_RWLOCK(h, idx));
+ 				return (db);
+ 			}
+ 			mutex_exit(&db->db_mtx);
+ 		}
+ 	}
+-	mutex_exit(DBUF_HASH_MUTEX(h, idx));
++	rw_exit(DBUF_HASH_RWLOCK(h, idx));
+ 	return (NULL);
+ }
+ 
+@@ -392,13 +392,13 @@ dbuf_hash_insert(dmu_buf_impl_t *db)
+ 	hv = dbuf_hash(os, obj, level, blkid);
+ 	idx = hv & h->hash_table_mask;
+ 
+-	mutex_enter(DBUF_HASH_MUTEX(h, idx));
++	rw_enter(DBUF_HASH_RWLOCK(h, idx), RW_WRITER);
+ 	for (dbf = h->hash_table[idx], i = 0; dbf != NULL;
+ 	    dbf = dbf->db_hash_next, i++) {
+ 		if (DBUF_EQUAL(dbf, os, obj, level, blkid)) {
+ 			mutex_enter(&dbf->db_mtx);
+ 			if (dbf->db_state != DB_EVICTING) {
+-				mutex_exit(DBUF_HASH_MUTEX(h, idx));
++				rw_exit(DBUF_HASH_RWLOCK(h, idx));
+ 				return (dbf);
+ 			}
+ 			mutex_exit(&dbf->db_mtx);
+@@ -416,7 +416,7 @@ dbuf_hash_insert(dmu_buf_impl_t *db)
+ 	mutex_enter(&db->db_mtx);
+ 	db->db_hash_next = h->hash_table[idx];
+ 	h->hash_table[idx] = db;
+-	mutex_exit(DBUF_HASH_MUTEX(h, idx));
++	rw_exit(DBUF_HASH_RWLOCK(h, idx));
+ 	uint64_t he = atomic_inc_64_nv(&dbuf_stats.hash_elements.value.ui64);
+ 	DBUF_STAT_MAX(hash_elements_max, he);
+ 
+@@ -473,13 +473,13 @@ dbuf_hash_remove(dmu_buf_impl_t *db)
+ 
+ 	/*
+ 	 * We mustn't hold db_mtx to maintain lock ordering:
+-	 * DBUF_HASH_MUTEX > db_mtx.
++	 * DBUF_HASH_RWLOCK > db_mtx.
+ 	 */
+ 	ASSERT(zfs_refcount_is_zero(&db->db_holds));
+ 	ASSERT(db->db_state == DB_EVICTING);
+ 	ASSERT(!MUTEX_HELD(&db->db_mtx));
+ 
+-	mutex_enter(DBUF_HASH_MUTEX(h, idx));
++	rw_enter(DBUF_HASH_RWLOCK(h, idx), RW_WRITER);
+ 	dbp = &h->hash_table[idx];
+ 	while ((dbf = *dbp) != db) {
+ 		dbp = &dbf->db_hash_next;
+@@ -490,7 +490,7 @@ dbuf_hash_remove(dmu_buf_impl_t *db)
+ 	if (h->hash_table[idx] &&
+ 	    h->hash_table[idx]->db_hash_next == NULL)
+ 		DBUF_STAT_BUMPDOWN(hash_chains);
+-	mutex_exit(DBUF_HASH_MUTEX(h, idx));
++	rw_exit(DBUF_HASH_RWLOCK(h, idx));
+ 	atomic_dec_64(&dbuf_stats.hash_elements.value.ui64);
+ }
+ 
+@@ -851,8 +851,8 @@ retry:
+ 	    sizeof (dmu_buf_impl_t),
+ 	    0, dbuf_cons, dbuf_dest, NULL, NULL, NULL, 0);
+ 
+-	for (i = 0; i < DBUF_MUTEXES; i++)
+-		mutex_init(&h->hash_mutexes[i], NULL, MUTEX_DEFAULT, NULL);
++	for (i = 0; i < DBUF_RWLOCKS; i++)
++		rw_init(&h->hash_rwlocks[i], NULL, RW_DEFAULT, NULL);
+ 
+ 	dbuf_stats_init(h);
+ 
+@@ -918,8 +918,8 @@ dbuf_fini(void)
+ 
+ 	dbuf_stats_destroy();
+ 
+-	for (i = 0; i < DBUF_MUTEXES; i++)
+-		mutex_destroy(&h->hash_mutexes[i]);
++	for (i = 0; i < DBUF_RWLOCKS; i++)
++		rw_destroy(&h->hash_rwlocks[i]);
+ #if defined(_KERNEL)
+ 	/*
+ 	 * Large allocations which do not require contiguous pages
+diff --git a/module/zfs/dbuf_stats.c b/module/zfs/dbuf_stats.c
+index 12bb568a08..037190a81b 100644
+--- a/module/zfs/dbuf_stats.c
++++ b/module/zfs/dbuf_stats.c
+@@ -137,7 +137,7 @@ dbuf_stats_hash_table_data(char *buf, size_t size, void *data)
+ 	if (size)
+ 		buf[0] = 0;
+ 
+-	mutex_enter(DBUF_HASH_MUTEX(h, dsh->idx));
++	rw_enter(DBUF_HASH_RWLOCK(h, dsh->idx), RW_READER);
+ 	for (db = h->hash_table[dsh->idx]; db != NULL; db = db->db_hash_next) {
+ 		/*
+ 		 * Returning ENOMEM will cause the data and header functions
+@@ -158,7 +158,7 @@ dbuf_stats_hash_table_data(char *buf, size_t size, void *data)
+ 
+ 		mutex_exit(&db->db_mtx);
+ 	}
+-	mutex_exit(DBUF_HASH_MUTEX(h, dsh->idx));
++	rw_exit(DBUF_HASH_RWLOCK(h, dsh->idx));
+ 
+ 	return (error);
+ }
+-- 
+2.32.0
+

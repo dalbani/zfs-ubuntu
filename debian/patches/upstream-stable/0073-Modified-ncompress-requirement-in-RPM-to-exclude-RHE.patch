@@ -1,0 +1,68 @@
+From 5d9c5275363c93417ddd2dfdd5fcd6dee2969685 Mon Sep 17 00:00:00 2001
+From: Rich Ercolani <214141+rincebrain@users.noreply.github.com>
+Date: Tue, 24 May 2022 12:39:32 -0400
+Subject: [PATCH] Modified ncompress requirement in RPM to exclude RHEL9
+
+The bug this was working around is no longer present.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Rich Ercolani <rincebrain@gmail.com>
+Closes #13480
+Closes #13490
+---
+ rpm/generic/zfs-dkms.spec.in | 2 +-
+ rpm/generic/zfs-kmod.spec.in | 2 +-
+ rpm/generic/zfs.spec.in      | 7 +++++--
+ 3 files changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/rpm/generic/zfs-dkms.spec.in b/rpm/generic/zfs-dkms.spec.in
+index 02be716aa9..cc9628d744 100644
+--- a/rpm/generic/zfs-dkms.spec.in
++++ b/rpm/generic/zfs-dkms.spec.in
+@@ -36,7 +36,7 @@ Obsoletes:      spl-dkms
+ Provides:       %{module}-kmod = %{version}
+ AutoReqProv:    no
+ 
+-%if 0%{?rhel}%{?fedora}%{?suse_version}
++%if (0%{?fedora}%{?suse_version}) || (0 < 0%{?rhel} && 0%{?rhel} < 9)
+ # We don't directly use it, but if this isn't installed, rpmbuild as root can
+ # crash+corrupt rpmdb
+ # See issue #12071
+diff --git a/rpm/generic/zfs-kmod.spec.in b/rpm/generic/zfs-kmod.spec.in
+index 53b1e13851..9cf0be1ed6 100644
+--- a/rpm/generic/zfs-kmod.spec.in
++++ b/rpm/generic/zfs-kmod.spec.in
+@@ -57,7 +57,7 @@ BuildRequires:  gcc, make
+ BuildRequires:  elfutils-libelf-devel
+ %endif
+ 
+-%if 0%{?rhel}%{?fedora}%{?suse_version}
++%if (0%{?fedora}%{?suse_version}) || (0 < 0%{?rhel} && 0%{?rhel} < 9)
+ # We don't directly use it, but if this isn't installed, rpmbuild as root can
+ # crash+corrupt rpmdb
+ # See issue #12071
+diff --git a/rpm/generic/zfs.spec.in b/rpm/generic/zfs.spec.in
+index 0e9cdcc31f..b0383d7b01 100644
+--- a/rpm/generic/zfs.spec.in
++++ b/rpm/generic/zfs.spec.in
+@@ -140,12 +140,15 @@ BuildRequires:  libblkid-devel
+ BuildRequires:  libudev-devel
+ BuildRequires:  libattr-devel
+ BuildRequires:  openssl-devel
++%if 0%{?fedora} || 0%{?rhel} >= 8 || 0%{?centos} >= 8
++BuildRequires:  libtirpc-devel
++%endif
++
++%if (0%{?fedora}%{?suse_version}) || (0 < 0%{?rhel} && 0%{?rhel} < 9)
+ # We don't directly use it, but if this isn't installed, rpmbuild as root can
+ # crash+corrupt rpmdb
+ # See issue #12071
+ BuildRequires:  ncompress
+-%if 0%{?fedora} >= 28 || 0%{?rhel} >= 8 || 0%{?centos} >= 8
+-BuildRequires:  libtirpc-devel
+ %endif
+ 
+ %if %{with pam}
+-- 
+2.32.0
+

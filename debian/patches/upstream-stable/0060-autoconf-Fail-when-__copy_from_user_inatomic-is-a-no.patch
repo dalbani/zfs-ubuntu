@@ -1,0 +1,61 @@
+From 756c3e085b9ecc1ae4611c3c7c37edf4dfa47436 Mon Sep 17 00:00:00 2001
+From: szubersk <szuberskidamian@gmail.com>
+Date: Sat, 7 May 2022 00:53:42 +0000
+Subject: [PATCH] autoconf: Fail when __copy_from_user_inatomic is a non-GPL
+ symbol
+
+A followup to 849c14e04844a2f0e1f7e42886c2cef083563f35
+Fix https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1009242
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: szubersk <szuberskidamian@gmail.com>
+Closes #13389
+---
+ config/kernel-copy-from-user-inatomic.m4 | 7 +++++--
+ module/os/linux/zfs/zfs_uio.c            | 4 ----
+ 2 files changed, 5 insertions(+), 6 deletions(-)
+
+diff --git a/config/kernel-copy-from-user-inatomic.m4 b/config/kernel-copy-from-user-inatomic.m4
+index 5fddaca59c..fec354b2f3 100644
+--- a/config/kernel-copy-from-user-inatomic.m4
++++ b/config/kernel-copy-from-user-inatomic.m4
+@@ -18,9 +18,12 @@ AC_DEFUN([ZFS_AC_KERNEL___COPY_FROM_USER_INATOMIC], [
+ 	AC_MSG_CHECKING([whether __copy_from_user_inatomic is available])
+ 	ZFS_LINUX_TEST_RESULT([__copy_from_user_inatomic_license], [
+ 		AC_MSG_RESULT(yes)
+-		AC_DEFINE(HAVE___COPY_FROM_USER_INATOMIC, 1,
+-		    [__copy_from_user_inatomic is available])
+ 	], [
+ 		AC_MSG_RESULT(no)
++		AC_MSG_ERROR([
++	*** The `__copy_from_user_inatomic()` Linux kernel function is
++	*** incompatible with the CDDL license and will prevent the module
++	*** linking stage from succeeding.  OpenZFS cannot be compiled.
++		])
+ 	])
+ ])
+diff --git a/module/os/linux/zfs/zfs_uio.c b/module/os/linux/zfs/zfs_uio.c
+index d14a48f9de..11cd62f5f8 100644
+--- a/module/os/linux/zfs/zfs_uio.c
++++ b/module/os/linux/zfs/zfs_uio.c
+@@ -75,7 +75,6 @@ zfs_uiomove_iov(void *p, size_t n, zfs_uio_rw_t rw, zfs_uio_t *uio)
+ 			} else {
+ 				unsigned long b_left = 0;
+ 				if (uio->uio_fault_disable) {
+-#if defined(HAVE___COPY_FROM_USER_INATOMIC)
+ 					if (!zfs_access_ok(VERIFY_READ,
+ 					    (iov->iov_base + skip), cnt)) {
+ 						return (EFAULT);
+@@ -85,9 +84,6 @@ zfs_uiomove_iov(void *p, size_t n, zfs_uio_rw_t rw, zfs_uio_t *uio)
+ 					    __copy_from_user_inatomic(p,
+ 					    (iov->iov_base + skip), cnt);
+ 					pagefault_enable();
+-#else
+-					return (EFAULT);
+-#endif
+ 				} else {
+ 					b_left =
+ 					    copy_from_user(p,
+-- 
+2.32.0
+

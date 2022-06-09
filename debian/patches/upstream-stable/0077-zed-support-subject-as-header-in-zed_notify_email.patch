@@ -1,0 +1,83 @@
+From 2458c7e63a07202cef892afb7a835416a0a3c587 Mon Sep 17 00:00:00 2001
+From: heeplr <32984777+heeplr@users.noreply.github.com>
+Date: Wed, 18 May 2022 19:27:53 +0200
+Subject: [PATCH] zed: support subject as header in zed_notify_email()
+
+Some minimal MUAs don't support passing the subjects as cmdline option.
+This commit checks if "@SUBJECT@" is missing in ZED_EMAIL_OPTS and then
+prepends a subject header to the notification message.
+Also set a default for ${subject}.
+
+Reviewed-by: Ahelenia Ziemia<C5><84>ska <nabijaczleweli@nabijaczleweli.xyz>
+Reviewed-by: Tony Hutter <hutter2@llnl.gov>
+Signed-off-by: Daniel Hiepler <d-git@coderdu.de>
+Closes #13440
+---
+ cmd/zed/zed.d/zed-functions.sh | 21 +++++++++++++++++----
+ cmd/zed/zed.d/zed.rc           |  1 +
+ 2 files changed, 18 insertions(+), 4 deletions(-)
+
+diff --git a/cmd/zed/zed.d/zed-functions.sh b/cmd/zed/zed.d/zed-functions.sh
+index 290f9150b4..567f7ae3cb 100644
+--- a/cmd/zed/zed.d/zed-functions.sh
++++ b/cmd/zed/zed.d/zed-functions.sh
+@@ -224,6 +224,8 @@ zed_notify()
+ # ZED_EMAIL_OPTS.  This undergoes the following keyword substitutions:
+ # - @ADDRESS@ is replaced with the space-delimited recipient email address(es)
+ # - @SUBJECT@ is replaced with the notification subject
++#   If @SUBJECT@ was omited here, a "Subject: ..." header will be added to notification
++#
+ #
+ # Arguments
+ #   subject: notification subject
+@@ -241,7 +243,7 @@ zed_notify()
+ #
+ zed_notify_email()
+ {
+-    local subject="$1"
++    local subject="${1:-"ZED notification"}"
+     local pathname="${2:-"/dev/null"}"
+ 
+     : "${ZED_EMAIL_PROG:="mail"}"
+@@ -262,12 +264,23 @@ zed_notify_email()
+         return 1
+     fi
+ 
+-    ZED_EMAIL_OPTS="$(echo "${ZED_EMAIL_OPTS}" \
++    # construct cmdline options
++    ZED_EMAIL_OPTS_PARSED="$(echo "${ZED_EMAIL_OPTS}" \
+         | sed   -e "s/@ADDRESS@/${ZED_EMAIL_ADDR}/g" \
+                 -e "s/@SUBJECT@/${subject}/g")"
+ 
+-    # shellcheck disable=SC2086
+-    eval ${ZED_EMAIL_PROG} ${ZED_EMAIL_OPTS} < "${pathname}" >/dev/null 2>&1
++    # pipe message to email prog
++    # shellcheck disable=SC2086,SC2248
++    {
++        # no subject passed as option?
++        if [ "${ZED_EMAIL_OPTS%@SUBJECT@*}" = "${ZED_EMAIL_OPTS}" ] ; then
++            # inject subject header
++            printf "Subject: %s\n" "${subject}"
++        fi
++        # output message
++        cat "${pathname}"
++    } |
++    eval ${ZED_EMAIL_PROG} ${ZED_EMAIL_OPTS_PARSED} >/dev/null 2>&1
+     rv=$?
+     if [ "${rv}" -ne 0 ]; then
+         zed_log_err "${ZED_EMAIL_PROG##*/} exit=${rv}"
+diff --git a/cmd/zed/zed.d/zed.rc b/cmd/zed/zed.d/zed.rc
+index 9ac77f929c..227b26c26b 100644
+--- a/cmd/zed/zed.d/zed.rc
++++ b/cmd/zed/zed.d/zed.rc
+@@ -30,6 +30,7 @@ ZED_EMAIL_ADDR="root"
+ # The string @SUBJECT@ will be replaced with the notification subject;
+ #   this should be protected with quotes to prevent word-splitting.
+ # Email will only be sent if ZED_EMAIL_ADDR is defined.
++# If @SUBJECT@ was omited here, a "Subject: ..." header will be added to notification
+ #
+ #ZED_EMAIL_OPTS="-s '@SUBJECT@' @ADDRESS@"
+ 
+-- 
+2.32.0
+

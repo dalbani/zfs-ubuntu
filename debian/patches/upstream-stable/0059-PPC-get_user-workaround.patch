@@ -1,0 +1,121 @@
+From 13b1f336d33cfe35a25b2a957360f778fa22fab5 Mon Sep 17 00:00:00 2001
+From: Damian Szuberski <szuberskidamian@gmail.com>
+Date: Wed, 27 Apr 2022 03:52:40 +1000
+Subject: [PATCH] PPC get_user workaround
+
+Linux 5.12 PPC 5.12 get_user() and __copy_from_user_inatomic()
+inline helpers very indirectly include a reference to the GPL'd
+array mmu_feature_keys[] and fails to build. Workaround this by
+using copy_from_user() and throwing EFAULT for any calls to
+__copy_from_user_inatomic(). This is a workaround until a fix
+for Linux commit 7613f5a66becfd0e43a0f34de8518695888f5458
+"powerpc/64s/kuap: Use mmu_has_feature()" is fully addressed.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Authored-by: Colin Ian King <colin.king@canonical.com>
+Signed-off-by: szubersk <szuberskidamian@gmail.com>
+Closes #11958
+Closes #12590
+Closes #13367
+---
+ config/kernel-copy-from-user-inatomic.m4 | 26 ++++++++++++++++++++++++
+ config/kernel.m4                         |  2 ++
+ module/os/linux/zfs/zfs_uio.c            |  8 ++++++--
+ 3 files changed, 34 insertions(+), 2 deletions(-)
+ create mode 100644 config/kernel-copy-from-user-inatomic.m4
+
+diff --git a/config/kernel-copy-from-user-inatomic.m4 b/config/kernel-copy-from-user-inatomic.m4
+new file mode 100644
+index 0000000000..5fddaca59c
+--- /dev/null
++++ b/config/kernel-copy-from-user-inatomic.m4
+@@ -0,0 +1,26 @@
++dnl #
++dnl # On certain architectures `__copy_from_user_inatomic`
++dnl # is a GPL exported variable and cannot be used by OpenZFS.
++dnl #
++
++dnl #
++dnl # Checking if `__copy_from_user_inatomic` is available.
++dnl #
++AC_DEFUN([ZFS_AC_KERNEL_SRC___COPY_FROM_USER_INATOMIC], [
++	ZFS_LINUX_TEST_SRC([__copy_from_user_inatomic], [
++		#include <linux/uaccess.h>
++	], [
++		int result __attribute__ ((unused)) = __copy_from_user_inatomic(NULL, NULL, 0);
++	], [], [ZFS_META_LICENSE])
++])
++
++AC_DEFUN([ZFS_AC_KERNEL___COPY_FROM_USER_INATOMIC], [
++	AC_MSG_CHECKING([whether __copy_from_user_inatomic is available])
++	ZFS_LINUX_TEST_RESULT([__copy_from_user_inatomic_license], [
++		AC_MSG_RESULT(yes)
++		AC_DEFINE(HAVE___COPY_FROM_USER_INATOMIC, 1,
++		    [__copy_from_user_inatomic is available])
++	], [
++		AC_MSG_RESULT(no)
++	])
++])
+diff --git a/config/kernel.m4 b/config/kernel.m4
+index bdab4cf011..25df16a90e 100644
+--- a/config/kernel.m4
++++ b/config/kernel.m4
+@@ -142,6 +142,7 @@ AC_DEFUN([ZFS_AC_KERNEL_TEST_SRC], [
+ 	ZFS_AC_KERNEL_SRC_ADD_DISK
+ 	ZFS_AC_KERNEL_SRC_KTHREAD
+ 	ZFS_AC_KERNEL_SRC_ZERO_PAGE
++	ZFS_AC_KERNEL_SRC___COPY_FROM_USER_INATOMIC
+ 
+ 	AC_MSG_CHECKING([for available kernel interfaces])
+ 	ZFS_LINUX_TEST_COMPILE_ALL([kabi])
+@@ -257,6 +258,7 @@ AC_DEFUN([ZFS_AC_KERNEL_TEST_RESULT], [
+ 	ZFS_AC_KERNEL_ADD_DISK
+ 	ZFS_AC_KERNEL_KTHREAD
+ 	ZFS_AC_KERNEL_ZERO_PAGE
++	ZFS_AC_KERNEL___COPY_FROM_USER_INATOMIC
+ ])
+ 
+ dnl #
+diff --git a/module/os/linux/zfs/zfs_uio.c b/module/os/linux/zfs/zfs_uio.c
+index a3d5d5f83b..d14a48f9de 100644
+--- a/module/os/linux/zfs/zfs_uio.c
++++ b/module/os/linux/zfs/zfs_uio.c
+@@ -75,6 +75,7 @@ zfs_uiomove_iov(void *p, size_t n, zfs_uio_rw_t rw, zfs_uio_t *uio)
+ 			} else {
+ 				unsigned long b_left = 0;
+ 				if (uio->uio_fault_disable) {
++#if defined(HAVE___COPY_FROM_USER_INATOMIC)
+ 					if (!zfs_access_ok(VERIFY_READ,
+ 					    (iov->iov_base + skip), cnt)) {
+ 						return (EFAULT);
+@@ -84,6 +85,9 @@ zfs_uiomove_iov(void *p, size_t n, zfs_uio_rw_t rw, zfs_uio_t *uio)
+ 					    __copy_from_user_inatomic(p,
+ 					    (iov->iov_base + skip), cnt);
+ 					pagefault_enable();
++#else
++					return (EFAULT);
++#endif
+ 				} else {
+ 					b_left =
+ 					    copy_from_user(p,
+@@ -248,7 +252,7 @@ zfs_uio_prefaultpages(ssize_t n, zfs_uio_t *uio)
+ 			/* touch each page in this segment. */
+ 			p = iov->iov_base + skip;
+ 			while (cnt) {
+-				if (get_user(tmp, (uint8_t *)p))
++				if (copy_from_user(&tmp, p, 1))
+ 					return (EFAULT);
+ 				ulong_t incr = MIN(cnt, PAGESIZE);
+ 				p += incr;
+@@ -256,7 +260,7 @@ zfs_uio_prefaultpages(ssize_t n, zfs_uio_t *uio)
+ 			}
+ 			/* touch the last byte in case it straddles a page. */
+ 			p--;
+-			if (get_user(tmp, (uint8_t *)p))
++			if (copy_from_user(&tmp, p, 1))
+ 				return (EFAULT);
+ 		}
+ 	}
+-- 
+2.32.0
+

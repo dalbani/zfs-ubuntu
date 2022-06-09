@@ -1,0 +1,649 @@
+From 0864c29e7ca646a796149320a9454bd433ce93f2 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Mon, 4 Apr 2022 22:45:58 +0200
+Subject: [PATCH] contrib; dracut: centralise root= parsing, actually support
+ root=s
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+So far, everything parsed root= manually, which meant that while
+zfs-parse.sh was updated, and supposedly supported + -> ' ' conversion,
+it meant nothing
+
+Instead, centralise parsing, and allow:
+  root=
+  root=zfs
+  root=zfs:
+  root=zfs:AUTO
+
+  root=ZFS=data/set
+  root=zfs:data/set
+  root=zfs:ZFS=data/set (as a side-effect; allowed but undocumented)
+
+  rootfstype=zfs AND root=data/set <=> root=data/set
+  rootfstype=zfs AND root=         <=> root=zfs:AUTO
+
+So rootfstype=zfs /also/ behaves as expected, and + decoding works
+
+Upstream-commit: 245529d85fb807bfc4525b3b1858896d2860995b
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #13291
+---
+ contrib/dracut/90zfs/mount-zfs.sh.in     |  33 +--
+ contrib/dracut/90zfs/parse-zfs.sh.in     |  58 ++---
+ contrib/dracut/90zfs/zfs-generator.sh.in |  30 +--
+ contrib/dracut/90zfs/zfs-lib.sh.in       |  61 ++++-
+ contrib/dracut/90zfs/zfs-load-key.sh.in  |  28 +--
+ contrib/dracut/README.dracut.markdown    | 273 ++++-------------------
+ 6 files changed, 149 insertions(+), 334 deletions(-)
+
+diff --git a/contrib/dracut/90zfs/mount-zfs.sh.in b/contrib/dracut/90zfs/mount-zfs.sh.in
+index 7e11c9afda..6bb06a7ffe 100755
+--- a/contrib/dracut/90zfs/mount-zfs.sh.in
++++ b/contrib/dracut/90zfs/mount-zfs.sh.in
+@@ -3,34 +3,20 @@
+ 
+ . /lib/dracut-zfs-lib.sh
+ 
+-ZFS_DATASET=""
+-ZFS_POOL=""
+-
+-case "${root}" in
+-	zfs:*) ;;
+-	*) return ;;
+-esac
++decode_root_args || return 0
+ 
+ GENERATOR_FILE=/run/systemd/generator/sysroot.mount
+ GENERATOR_EXTENSION=/run/systemd/generator/sysroot.mount.d/zfs-enhancement.conf
+ 
+-if [ -e "$GENERATOR_FILE" ] && [ -e "$GENERATOR_EXTENSION" ] ; then
+-	# If the ZFS sysroot.mount flag exists, the initial RAM disk configured
+-	# it to mount ZFS on root.  In that case, we bail early.  This flag
+-	# file gets created by the zfs-generator program upon successful run.
+-	info "ZFS: There is a sysroot.mount and zfs-generator has extended it."
+-	info "ZFS: Delegating root mount to sysroot.mount."
+-	# Let us tell the initrd to run on shutdown.
+-	# We have a shutdown hook to run
+-	# because we imported the pool.
++if [ -e "$GENERATOR_FILE" ] && [ -e "$GENERATOR_EXTENSION" ]; then
++	# We're under systemd and dracut-zfs-generator ran to completion.
++	info "ZFS: Delegating root mount to sysroot.mount at al."
++
+ 	# We now prevent Dracut from running this thing again.
+-	for zfsmounthook in "$hookdir"/mount/*zfs* ; do
+-		if [ -f "$zfsmounthook" ] ; then
+-			rm -f "$zfsmounthook"
+-		fi
+-	done
++	rm -f "$hookdir"/mount/*zfs*
+ 	return
+ fi
++
+ info "ZFS: No sysroot.mount exists or zfs-generator did not extend it."
+ info "ZFS: Mounting root with the traditional mount-zfs.sh instead."
+ 
+@@ -38,6 +24,9 @@ info "ZFS: Mounting root with the traditional mount-zfs.sh instead."
+ modprobe zfs 2>/dev/null
+ udevadm settle
+ 
++ZFS_DATASET=
++ZFS_POOL=
++
+ if [ "${root}" = "zfs:AUTO" ] ; then
+ 	if ! ZFS_DATASET="$(find_bootfs)" ; then
+ 		# shellcheck disable=SC2086
+@@ -53,7 +42,7 @@ if [ "${root}" = "zfs:AUTO" ] ; then
+ 	info "ZFS: Using ${ZFS_DATASET} as root."
+ fi
+ 
+-ZFS_DATASET="${ZFS_DATASET:-${root#zfs:}}"
++ZFS_DATASET="${ZFS_DATASET:-${root}}"
+ ZFS_POOL="${ZFS_DATASET%%/*}"
+ 
+ if import_pool "${ZFS_POOL}" ; then
+diff --git a/contrib/dracut/90zfs/parse-zfs.sh.in b/contrib/dracut/90zfs/parse-zfs.sh.in
+index 0c3d06bfb0..f7d1f1c5da 100755
+--- a/contrib/dracut/90zfs/parse-zfs.sh.in
++++ b/contrib/dracut/90zfs/parse-zfs.sh.in
+@@ -1,7 +1,8 @@
+ #!/bin/sh
+ # shellcheck disable=SC2034,SC2154
+ 
+-. /lib/dracut-lib.sh
++# shellcheck source=zfs-lib.sh.in
++. /lib/dracut-zfs-lib.sh
+ 
+ # Let the command line override our host id.
+ spl_hostid=$(getarg spl_hostid=)
+@@ -15,43 +16,20 @@ else
+ 	warn "ZFS: Pools may not import correctly."
+ fi
+ 
+-wait_for_zfs=0
+-case "${root}" in
+-	""|zfs|zfs:)
+-		# We'll take root unset, root=zfs, or root=zfs:
+-		# No root set, so we want to read the bootfs attribute.  We
+-		# can't do that until udev settles so we'll set dummy values
+-		# and hope for the best later on.
+-		root="zfs:AUTO"
+-		rootok=1
+-		wait_for_zfs=1
+-
+-		info "ZFS: Enabling autodetection of bootfs after udev settles."
+-		;;
+-
+-	ZFS=*|zfs:*)
+-		# root is explicit ZFS root.  Parse it now.  We can handle
+-		# a root=... param in any of the following formats:
+-		# root=ZFS=rpool/ROOT
+-		# root=zfs:rpool/ROOT
+-		# root=ZFS=pool+with+space/ROOT+WITH+SPACE (translates to root=ZFS=pool with space/ROOT WITH SPACE)
+-
+-		# Strip down to just the pool/fs
+-		root="${root#zfs:}"
+-		root="zfs:${root#ZFS=}"
+-		# switch + with spaces because kernel cmdline does not allow us to quote parameters
+-		root=$(echo "$root" | tr '+' ' ')
+-		rootok=1
+-		wait_for_zfs=1
+-
+-		info "ZFS: Set ${root} as bootfs."
+-		;;
+-esac
+-
+-# Make sure Dracut is happy that we have a root and will wait for ZFS
+-# modules to settle before mounting.
+-if [ ${wait_for_zfs} -eq 1 ]; then
+-	ln -s /dev/null /dev/root 2>/dev/null
+-	initqueuedir="${hookdir}/initqueue/finished"
+-	echo '[ -e /dev/zfs ]' > "${initqueuedir}/zfs.sh"
++if decode_root_args; then
++	if [ "$root" = "zfs:AUTO" ]; then
++		info "ZFS: Boot dataset autodetected from bootfs=."
++	else
++		info "ZFS: Boot dataset is ${root}."
++	fi
++
++	rootok=1
++	# Make sure Dracut is happy that we have a root and will wait for ZFS
++	# modules to settle before mounting.
++	if [ -n "${wait_for_zfs}" ]; then
++		ln -s null /dev/root
++		echo '[ -e /dev/zfs ]' > "${hookdir}/initqueue/finished/zfs.sh"
++	fi
++else
++	info "ZFS: no ZFS-on-root."
+ fi
+diff --git a/contrib/dracut/90zfs/zfs-generator.sh.in b/contrib/dracut/90zfs/zfs-generator.sh.in
+index e50b9530c4..56f7ca9785 100755
+--- a/contrib/dracut/90zfs/zfs-generator.sh.in
++++ b/contrib/dracut/90zfs/zfs-generator.sh.in
+@@ -1,5 +1,5 @@
+ #!/bin/sh
+-# shellcheck disable=SC2016,SC1004
++# shellcheck disable=SC2016,SC1004,SC2154
+ 
+ grep -wq debug /proc/cmdline && debug=1
+ [ -n "$debug" ] && echo "zfs-generator: starting" >> /dev/kmsg
+@@ -10,37 +10,17 @@ GENERATOR_DIR="$1"
+     exit 1
+ }
+ 
+-[ -f /lib/dracut-lib.sh ] && dracutlib=/lib/dracut-lib.sh
+-[ -f /usr/lib/dracut/modules.d/99base/dracut-lib.sh ] && dracutlib=/usr/lib/dracut/modules.d/99base/dracut-lib.sh
+-command -v getarg >/dev/null 2>&1 || {
+-    [ -n "$debug" ] && echo "zfs-generator: loading Dracut library from $dracutlib" >> /dev/kmsg
+-    . "$dracutlib"
+-}
+-
++# shellcheck source=zfs-lib.sh.in
+ . /lib/dracut-zfs-lib.sh
++decode_root_args || exit 0
+ 
+-[ -z "$root" ]       && root=$(getarg root=)
+-[ -z "$rootfstype" ] && rootfstype=$(getarg rootfstype=)
+-[ -z "$rootflags" ]  && rootflags=$(getarg rootflags=)
+-
+-# If root is not ZFS= or zfs: or rootfstype is not zfs
+-# then we are not supposed to handle it.
+-[ "${root##zfs:}" = "${root}" ] &&
+-	[ "${root##ZFS=}" = "${root}" ] &&
+-	[ "$rootfstype" != "zfs" ] &&
+-	exit 0
+-
++[ -z "${rootflags}" ] && rootflags=$(getarg rootflags=)
+ case ",${rootflags}," in
+ 	*,zfsutil,*) ;;
+ 	,,)	rootflags=zfsutil ;;
+ 	*)	rootflags="zfsutil,${rootflags}" ;;
+ esac
+ 
+-if [ "${root}" != "zfs:AUTO" ]; then
+-  root="${root##zfs:}"
+-  root="${root##ZFS=}"
+-fi
+-
+ [ -n "$debug" ] && echo "zfs-generator: writing extension for sysroot.mount to $GENERATOR_DIR/sysroot.mount.d/zfs-enhancement.conf" >> /dev/kmsg
+ 
+ 
+@@ -89,7 +69,7 @@ else
+   _zfs_generator_cb() {
+       dset="${1}"
+       mpnt="${2}"
+-      unit="sysroot$(echo "$mpnt" | tr '/' '-').mount"
++      unit="$(systemd-escape --suffix=mount -p "/sysroot${mpnt}")"
+ 
+       {
+           echo "[Unit]"
+diff --git a/contrib/dracut/90zfs/zfs-lib.sh.in b/contrib/dracut/90zfs/zfs-lib.sh.in
+index bca51c10c4..2b5b93253a 100755
+--- a/contrib/dracut/90zfs/zfs-lib.sh.in
++++ b/contrib/dracut/90zfs/zfs-lib.sh.in
+@@ -1,6 +1,6 @@
+ #!/bin/sh
+ 
+-command -v getarg >/dev/null || . /lib/dracut-lib.sh
++command -v getarg >/dev/null || . /lib/dracut-lib.sh || . /usr/lib/dracut/modules.d/99base/dracut-lib.sh
+ command -v getargbool >/dev/null || {
+     # Compatibility with older Dracut versions.
+     # With apologies to the Dracut developers.
+@@ -159,7 +159,9 @@ ask_for_password() {
+         shift
+     done
+ 
+-    { flock -s 9;
++    {
++        flock -s 9
++
+         # Prompt for password with plymouth, if installed and running.
+         if plymouth --ping 2>/dev/null; then
+             plymouth ask-for-password \
+@@ -189,3 +191,58 @@ ask_for_password() {
+     [ $ret -ne 0 ] && echo "Wrong password" >&2
+     return $ret
+ }
++
++# Parse root=, rootfstype=, return them decoded and normalised to zfs:AUTO for auto, plain dset for explicit
++#
++# True if ZFS-on-root, false if we shouldn't
++#
++# Supported values:
++#   root=
++#   root=zfs
++#   root=zfs:
++#   root=zfs:AUTO
++#
++#   root=ZFS=data/set
++#   root=zfs:data/set
++#   root=zfs:ZFS=data/set (as a side-effect; allowed but undocumented)
++#
++#   rootfstype=zfs AND root=data/set <=> root=data/set
++#   rootfstype=zfs AND root=         <=> root=zfs:AUTO
++#
++# '+'es in explicit dataset decoded to ' 's.
++decode_root_args() {
++    if [ -n "$rootfstype" ]; then
++        [ "$rootfstype" = zfs ]
++        return
++    fi
++
++    root=$(getarg root=)
++    rootfstype=$(getarg rootfstype=)
++
++    # shellcheck disable=SC2249
++    case "$root" in
++        ""|zfs|zfs:|zfs:AUTO)
++            root=zfs:AUTO
++            rootfstype=zfs
++            return 0
++            ;;
++
++        ZFS=*|zfs:*)
++            root="${root#zfs:}"
++            root="${root#ZFS=}"
++            root=$(echo "$root" | tr '+' ' ')
++            rootfstype=zfs
++            return 0
++            ;;
++    esac
++
++    if [ "$rootfstype" = "zfs" ]; then
++        case "$root" in
++            "") root=zfs:AUTO ;;
++            *)  root=$(echo "$root" | tr '+' ' ') ;;
++        esac
++        return 0
++    fi
++
++    return 1
++}
+diff --git a/contrib/dracut/90zfs/zfs-load-key.sh.in b/contrib/dracut/90zfs/zfs-load-key.sh.in
+index c974b3d9ec..9fbef8f680 100755
+--- a/contrib/dracut/90zfs/zfs-load-key.sh.in
++++ b/contrib/dracut/90zfs/zfs-load-key.sh.in
+@@ -4,32 +4,20 @@
+ # only run this on systemd systems, we handle the decrypt in mount-zfs.sh in the mount hook otherwise
+ [ -e /bin/systemctl ] || [ -e /usr/bin/systemctl ] || return 0
+ 
+-# This script only gets executed on systemd systems, see mount-zfs.sh for non-systemd systems
++# shellcheck source=zfs-lib.sh.in
++. /lib/dracut-zfs-lib.sh
+ 
+-# import the libs now that we know the pool imported
+-[ -f /lib/dracut-lib.sh ] && dracutlib=/lib/dracut-lib.sh
+-[ -f /usr/lib/dracut/modules.d/99base/dracut-lib.sh ] && dracutlib=/usr/lib/dracut/modules.d/99base/dracut-lib.sh
+-# shellcheck source=./lib-zfs.sh.in
+-. "$dracutlib"
+-
+-# load the kernel command line vars
+-[ -z "$root" ] && root="$(getarg root=)"
+-# If root is not ZFS= or zfs: or rootfstype is not zfs then we are not supposed to handle it.
+-[ "${root##zfs:}" = "${root}" ] && [ "${root##ZFS=}" = "${root}" ] && [ "$rootfstype" != "zfs" ] && exit 0
++decode_root_args || return 0
+ 
+ # There is a race between the zpool import and the pre-mount hooks, so we wait for a pool to be imported
+-while [ "$(zpool list -H)" = "" ]; do
+-    systemctl is-failed --quiet zfs-import-cache.service zfs-import-scan.service && exit 1
++while ! systemctl is-active --quiet zfs-import.target; do
++    systemctl is-failed --quiet zfs-import-cache.service zfs-import-scan.service && return 1
+     sleep 0.1s
+ done
+ 
+-# run this after import as zfs-import-cache/scan service is confirmed good
+-# we do not overwrite the ${root} variable, but create a new one, BOOTFS, to hold the dataset
+-if [ "${root}" = "zfs:AUTO" ] ; then
+-    BOOTFS="$(zpool list -H -o bootfs | awk '$1 != "-" {print; exit}')"
+-else
+-    BOOTFS="${root##zfs:}"
+-    BOOTFS="${BOOTFS##ZFS=}"
++BOOTFS="$root"
++if [ "$BOOTFS" = "zfs:AUTO" ]; then
++    BOOTFS="$(zpool get -Ho value bootfs | grep -m1 -vFx -)"
+ fi
+ 
+ # if pool encryption is active and the zfs command understands '-o encryption'
+diff --git a/contrib/dracut/README.dracut.markdown b/contrib/dracut/README.dracut.markdown
+index f31543c3cf..522f2ce3c8 100644
+--- a/contrib/dracut/README.dracut.markdown
++++ b/contrib/dracut/README.dracut.markdown
+@@ -1,225 +1,48 @@
+-How to setup a zfs root filesystem using dracut
+------------------------------------------------
+-
+-1) Install the zfs-dracut package.  This package adds a zfs dracut module
+-to the /usr/share/dracut/modules.d/ directory which allows dracut to
+-create an initramfs which is zfs aware.
+-
+-2) Set the bootfs property for the bootable dataset in the pool.  Then set
+-the dataset mountpoint property to '/'.
+-
+-    $ zpool set bootfs=pool/dataset pool
+-    $ zfs set mountpoint=/ pool/dataset
+-
+-Alternately, legacy mountpoints can be used by setting the 'root=' option
+-on the kernel line of your grub.conf/menu.lst configuration file.  Then
+-set the dataset mountpoint property to 'legacy'.
+-
+-    $ grub.conf/menu.lst: kernel ... root=ZFS=pool/dataset
+-    $ zfs set mountpoint=legacy pool/dataset
+-
+-3) To set zfs module options put them in /etc/modprobe.d/zfs.conf file.
+-The complete list of zfs module options is available by running the
+-_modinfo zfs_ command.  Commonly set options include: zfs_arc_min,
+-zfs_arc_max, zfs_prefetch_disable, and zfs_vdev_max_pending.
+-
+-4) Finally, create your new initramfs by running dracut.
+-
+-    $ dracut --force /path/to/initramfs kernel_version
+-
+-Kernel Command Line
+--------------------
+-
+-The initramfs' behavior is influenced by the following kernel command line
+-parameters passed in from the boot loader:
+-
+-* `root=...`: If not set, importable pools are searched for a bootfs
+-attribute.  If an explicitly set root is desired, you may use
+-`root=ZFS:pool/dataset`
+-
+-* `zfs_force=0`: If set to 1, the initramfs will run `zpool import -f` when
+-attempting to import pools if the required pool isn't automatically imported
+-by the zfs module.  This can save you a trip to a bootcd if hostid has
+-changed, but is dangerous and can lead to zpool corruption, particularly in
+-cases where storage is on a shared fabric such as iSCSI where multiple hosts
+-can access storage devices concurrently.  _Please understand the implications
+-of force-importing a pool before enabling this option!_
+-
+-* `spl_hostid`: By default, the hostid used by the SPL module is read from
+-/etc/hostid inside the initramfs.  This file is placed there from the host
+-system when the initramfs is built which effectively ties the ramdisk to the
+-host which builds it.  If a different hostid is desired, one may be set in
+-this attribute and will override any file present in the ramdisk.  The
+-format should be hex exactly as found in the `/etc/hostid` file, IE
+-`spl_hostid=0x00bab10c`.
+-
+-Note that changing the hostid between boots will most likely lead to an
+-un-importable pool since the last importing hostid won't match.  In order
+-to recover from this, you may use the `zfs_force` option or boot from a
+-different filesystem and `zpool import -f` then `zpool export` the pool
+-before rebooting with the new hostid.
+-
+-* `bootfs.snapshot`: If listed, enables the zfs-snapshot-bootfs service on a Dracut system. The zfs-snapshot-bootfs service simply runs `zfs snapshot $BOOTFS@%v` after the pool has been imported but before the bootfs is mounted. `$BOOTFS` is substituted with the value of the bootfs setting on the pool. `%v` is substituted with the version string of the kernel currently being booted (e.g. 5.6.6-200.fc31.x86\_64). Failure to create the snapshot (e.g. because one with the same name already exists) will be logged, but will not otherwise interrupt the boot process.
+-
+-    It is safe to leave the bootfs.snapshot flag set persistently on your kernel command line so that a new snapshot of your bootfs will be created on every kernel update. If you leave bootfs.snapshot set persistently on your kernel command line, you may find the below script helpful for automatically removing old snapshots of the bootfs along with their associated kernel.
+-
+-        #!/usr/bin/sh
+-
+-        if [[ "$1" == "remove" ]] && grep -q "\bbootfs.snapshot\b" /proc/cmdline; then
+-           zfs destroy $(findmnt -n -o source /)@$2 &> /dev/null
+-        fi
+-
+-        exit 0
+-
+-    To use the above script place it in a plain text file named /etc/kernel/install.d/99-zfs-cleanup.install and mark it executable with the following command:
+-
+-        $ chmod +x /etc/kernel/install.d/99-zfs-cleanup.install
+-
+-    On Red Hat based systems, you can change the value of `installonly_limit` in /etc/dnf/dnf.conf to adjust the number of kernels and their associated snapshots that are kept.
+-
+-* `bootfs.snapshot=<snapname>`: Is identical to the bootfs.snapshot parameter explained above except that the value substituted for \<snapname\> will be used when creating the snapshot instead of the version string of the kernel currently being booted. 
+-
+-* `bootfs.rollback`: If listed, enables the zfs-rollback-bootfs service on a Dracut system. The zfs-rollback-bootfs service simply runs `zfs rollback -Rf $BOOTFS@%v` after the pool has been imported but before the bootfs is mounted. If the rollback operation fails, the boot process will be interrupted with a Dracut rescue shell. __Use this parameter with caution. Intermediate snapshots of the bootfs will be destroyed!__ TIP: Keep your user data (e.g. /home) on separate file systems (it can be in the same pool though).
+-
+-* `bootfs.rollback=<snapname>`: Is identical to the bootfs.rollback parameter explained above except that the value substituted for \<snapname\> will be used when rolling back the bootfs instead of the version string of the kernel currently being booted. If you use this form, choose a snapshot that is new enough to contain the needed kernel modules under /lib/modules or use a kernel that has all the needed modules built-in.
+-
+-How it Works
+-============
+-
+-The Dracut module consists of the following files (less Makefile's):
+-
+-* `module-setup.sh`: Script run by the initramfs builder to create the
+-ramdisk.  Contains instructions on which files are required by the modules
+-and z* programs.  Also triggers inclusion of `/etc/hostid` and the zpool
+-cache.  This file is not included in the initramfs.
+-
+-* `90-zfs.rules`: udev rules which trigger loading of the ZFS modules at boot.
+-
+-* `zfs-lib.sh`: Utility functions used by the other files.
+-
+-* `parse-zfs.sh`: Run early in the initramfs boot process to parse kernel
+-command line and determine if ZFS is the active root filesystem.
+-
+-* `mount-zfs.sh`: Run later in initramfs boot process after udev has settled
+-to mount the root dataset.
+-
+-* `export-zfs.sh`: Run on shutdown after dracut has restored the initramfs
+-and pivoted to it, allowing for a clean unmount and export of the ZFS root.
+-
+-`zfs-lib.sh`
+-------------
+-
+-This file provides a few handy functions for working with ZFS. Those
+-functions are used by the `mount-zfs.sh` and `export-zfs.sh` files.
+-However, they could be used by any other file as well, as long as the file
+-sources `/lib/dracut-zfs-lib.sh`.
+-
+-`module-setup.sh`
+------------------
+-
+-This file is run by the Dracut script within the live system, not at boot
+-time.  It's not included in the final initramfs.  Functions in this script
+-describe which files are needed by ZFS at boot time.
+-
+-Currently all the various z* and spl modules are included, a dependency is
+-asserted on udev-rules, and the various zfs, zpool, etc. helpers are included.
+-Dracut provides library functions which automatically gather the shared libs
+-necessary to run each of these binaries, so statically built binaries are
+-not required.
+-
+-The zpool and zvol udev rules files are copied from where they are
+-installed by the ZFS build.  __PACKAGERS TAKE NOTE__: If you move
+-`/etc/udev/rules/60-z*.rules`, you'll need to update this file to match.
+-
+-Currently this file also includes `/etc/hostid` and `/etc/zfs/zpool.cache`
+-which means the generated ramdisk is specific to the host system which built
+-it.  If a generic initramfs is required, it may be preferable to omit these
+-files and specify the `spl_hostid` from the boot loader instead.
+-
+-`parse-zfs.sh`
+---------------
+-
+-Run during the cmdline phase of the initramfs boot process, this script
+-performs some basic sanity checks on kernel command line parameters to
+-determine if booting from ZFS is likely to be what is desired.  Dracut
+-requires this script to adjust the `root` variable if required and to set
+-`rootok=1` if a mountable root filesystem is available.  Unfortunately this
+-script must run before udev is settled and kernel modules are known to be
+-loaded, so accessing the zpool and zfs commands is unsafe.
+-
+-If the root=ZFS... parameter is set on the command line, then it's at least
+-certain that ZFS is what is desired, though this script is unable to
+-determine if ZFS is in fact available.  This script will alter the `root`
+-parameter to replace several historical forms of specifying the pool and
+-dataset name with the canonical form of `zfs:pool/dataset`.
+-
+-If no root= parameter is set, the best this script can do is guess that
+-ZFS is desired.  At present, no other known filesystems will work with no
+-root= parameter, though this might possibly interfere with using the
+-compiled-in default root in the kernel image.  It's considered unlikely
+-that would ever be the case when an initramfs is in use, so this script
+-sets `root=zfs:AUTO` and hopes for the best.
+-
+-Once the root=... (or lack thereof) parameter is parsed, a dummy symlink
+-is created from `/dev/root` -> `/dev/null` to satisfy parts of the Dracut
+-process which check for presence of a single root device node.
+-
+-Finally, an initqueue/finished hook is registered which causes the initqueue
+-phase of Dracut to wait for `/dev/zfs` to become available before attempting
+-to mount anything.
+-
+-`mount-zfs.sh`
+---------------
+-
+-This script is run after udev has settled and all tasks in the initqueue
+-have succeeded.  This ensures that `/dev/zfs` is available and that the
+-various ZFS modules are successfully loaded.  As it is now safe to call
+-zpool and friends, we can proceed to find the bootfs attribute if necessary.
+-
+-If the root parameter was explicitly set on the command line, no parsing is
+-necessary.  The list of imported pools is checked to see if the desired pool
+-is already imported.  If it's not, and attempt is made to import the pool
+-explicitly, though no force is attempted.  Finally the specified dataset
+-is mounted on `$NEWROOT`, first using the `-o zfsutil` option to handle
+-non-legacy mounts, then if that fails, without zfsutil to handle legacy
+-mount points.
+-
+-If no root parameter was specified, this script attempts to find a pool with
+-its bootfs attribute set.  First, already-imported pools are scanned and if
+-an appropriate pool is found, no additional pools are imported.  If no pool
+-with bootfs is found, any additional pools in the system are imported with
+-`zpool import -N -a`, and the scan for bootfs is tried again.  If no bootfs
+-is found with all pools imported, all pools are re-exported, and boot fails.
+-Assuming a bootfs is found, an attempt is made to mount it to `$NEWROOT`,
+-first with, then without the zfsutil option as above.
+-
+-Ordinarily pools are imported _without_ the force option which may cause
+-boot to fail if the hostid has changed or a pool has been physically moved
+-between servers.  The `zfs_force` kernel parameter is provided which when
+-set to `1` causes `zpool import` to be run with the `-f` flag.  Forcing pool
+-import can lead to serious data corruption and loss of pools, so this option
+-should be used with extreme caution.  Note that even with this flag set, if
+-the required zpool was auto-imported by the kernel module, no additional
+-`zpool import` commands are run, so nothing is forced.
+-
+-`export-zfs.sh`
+----------------
+-
+-Normally the zpool containing the root dataset cannot be exported on
+-shutdown as it is still in use by the init process. To work around this,
+-Dracut is able to restore the initramfs on shutdown and pivot to it.
+-All remaining process are then running from a ramdisk, allowing for a
+-clean unmount and export of the ZFS root. The theory of operation is
+-described in detail in the [Dracut manual](https://www.kernel.org/pub/linux/utils/boot/dracut/dracut.html#_dracut_on_shutdown).
+-
+-This script will try to export all remaining zpools after Dracut has
+-pivoted to the initramfs. If an initial regular export is not successful,
+-Dracut will call this script once more with the `final` option,
+-in which case a forceful export is attempted.
+-
+-Other Dracut modules include similar shutdown scripts and Dracut
+-invokes these scripts round-robin until they succeed. In particular,
+-the `90dm` module installs a script which tries to close and remove
+-all device mapper targets. Thus, if there are ZVOLs containing
+-dm-crypt volumes or if the zpool itself is backed by a dm-crypt
+-volume, the shutdown scripts will try to untangle this.
++## Basic setup
++1. Install `zfs-dracut`
++2. Set `mountpoint=/` for your root dataset (for compatibility, `legacy` also works, but is not recommended for new installations):
++    ```sh
++    zfs set mountpoint=/ pool/dataset
++    ```
++3. Either (a) set `bootfs=` on the pool to the dataset:
++    ```sh
++    zpool set bootfs=pool/dataset pool
++    ```
++4. Or (b) append `root=zfs:pool/dataset` to your kernel cmdline.
++5. Re-generate your initrd and update it in your boot bundle
++
++Encrypted datasets have keys loaded automatically or prompted for.
++
++If the root dataset contains children with `mountpoint=`s of `/etc`, `/bin`, `/lib*`, or `/usr`, they're mounted too.
++
++## cmdline
++1. `root=`                    | Root dataset is…                                         |
++   ---------------------------|----------------------------------------------------------|
++   *(empty)*                  | the first `bootfs=` after `zpool import -aN`             |
++   `zfs:AUTO`, `zfs:`, `zfs`  | *(as above, but overriding other autoselection methods)* |
++   `ZFS=pool/dataset`         | `pool/dataset`                                           |
++   `zfs:pool/dataset`         | *(as above)*                                             |
++
++   All `+`es are replaced with spaces (i.e. to boot from `root pool/data set`, pass `root=zfs:root+pool/data+set`).
++
++   The dataset can be at any depth, including being the pool's root dataset (i.e. `root=zfs:pool`).
++
++   `rootfstype=zfs` is equivalent to `root=zfs:AUTO`, `rootfstype=zfs root=pool/dataset` is equivalent to `root=zfs:pool/dataset`.
++
++2. `spl_hostid`: passed to `zgenhostid -f`, useful to override the `/etc/hostid` file baked into the initrd.
++
++3. `bootfs.snapshot`, `bootfs.snapshot=snapshot-name`: enables `zfs-snapshot-bootfs.service`,
++   which creates a snapshot `$root_dataset@$(uname -r)` (or, in the second form, `$root_dataset@snapshot-name`)
++   after pool import but before the rootfs is mounted.
++   Failure to create the snapshot is noted, but booting continues.
++
++4. `bootfs.rollback`, `bootfs.rollback=snapshot-name`: enables `zfs-snapshot-bootfs.service`,
++   which `-Rf` rolls back to `$root_dataset@$(uname -r)` (or, in the second form, `$root_dataset@snapshot-name`)
++   after pool import but before the rootfs is mounted.
++   Failure to roll back will fall down to the rescue shell.
++   This has obvious potential for data loss: make sure your persistent data is not below the rootfs and you don't care about any intermediate snapshots.
++
++5. If both `bootfs.snapshot` and `bootfs.rollback` are set, `bootfs.rollback` is ordered *after* `bootfs.snapshot`.
++
++6. `zfs_force`, `zfs.force`, `zfsforce`: add `-f` to all `zpool import` invocations.
++   May be useful. Use with caution.
+-- 
+2.32.0
+

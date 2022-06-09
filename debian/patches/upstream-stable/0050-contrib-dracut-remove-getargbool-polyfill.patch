@@ -1,0 +1,47 @@
+From 1184df6b93771c0e5dabb3b526e6cc6dcf805d01 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Tue, 5 Apr 2022 02:56:57 +0200
+Subject: [PATCH] contrib: dracut: remove getargbool polyfill
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+It was originally released in dracut 008 in February 2011;
+we can probably drop it now
+
+Upstream-commit: 47a02e39721bd226646dbdfe3063563a4a5e9749
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #13291
+---
+ contrib/dracut/90zfs/zfs-lib.sh.in | 14 --------------
+ 1 file changed, 14 deletions(-)
+
+diff --git a/contrib/dracut/90zfs/zfs-lib.sh.in b/contrib/dracut/90zfs/zfs-lib.sh.in
+index 1bd5b27ac1..a91b56ba7f 100755
+--- a/contrib/dracut/90zfs/zfs-lib.sh.in
++++ b/contrib/dracut/90zfs/zfs-lib.sh.in
+@@ -2,20 +2,6 @@
+ # shellcheck disable=SC2034
+ 
+ command -v getarg >/dev/null || . /lib/dracut-lib.sh || . /usr/lib/dracut/modules.d/99base/dracut-lib.sh
+-command -v getargbool >/dev/null || {
+-    # Compatibility with older Dracut versions.
+-    # With apologies to the Dracut developers.
+-    getargbool() {
+-        _default="$1"; shift
+-        ! _b=$(getarg "$@") && [ -z "$_b" ] && _b="$_default"
+-        if [ -n "$_b" ]; then
+-            [ "$_b" = "0" ] && return 1
+-            [ "$_b" = "no" ] && return 1
+-            [ "$_b" = "off" ] && return 1
+-        fi
+-        return 0
+-    }
+-}
+ 
+ TAB="	"
+ 
+-- 
+2.32.0
+

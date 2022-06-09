@@ -1,0 +1,127 @@
+From 60fc173251a7d737f76c65e14866d327554c440a Mon Sep 17 00:00:00 2001
+From: Brian Atkinson <batkinson@lanl.gov>
+Date: Mon, 14 Mar 2022 13:37:39 -0600
+Subject: [PATCH] Adding ZERO_PAGE detection
+
+On some architectures ZERO_PAGE is unavailable because it references
+a GPL exported symbol of empty_zero_page. Originally e08b993 removed
+the call to PAGE_ZERO(0) for assignment to the abd_zero_page. However,
+a simple check can be done to avoid a kernel allocation and free for
+the abd_zero_page if ZERO_PAGE is available.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Brian Atkinson <batkinson@lanl.gov>
+Closes #13199
+---
+ config/kernel-zero_page.m4   | 27 +++++++++++++++++++++++++++
+ config/kernel.m4             |  2 ++
+ module/os/linux/zfs/abd_os.c | 15 ++++++++++++---
+ 3 files changed, 41 insertions(+), 3 deletions(-)
+ create mode 100644 config/kernel-zero_page.m4
+
+diff --git a/config/kernel-zero_page.m4 b/config/kernel-zero_page.m4
+new file mode 100644
+index 0000000000..1461781acb
+--- /dev/null
++++ b/config/kernel-zero_page.m4
+@@ -0,0 +1,27 @@
++dnl #
++dnl # ZERO_PAGE() is an alias for emtpy_zero_page. On certain architectures
++dnl # this is a GPL exported variable.
++dnl #
++
++dnl #
++dnl # Checking if ZERO_PAGE is exported GPL-only
++dnl #
++AC_DEFUN([ZFS_AC_KERNEL_SRC_ZERO_PAGE], [
++	ZFS_LINUX_TEST_SRC([zero_page], [
++		#include <asm/pgtable.h>
++	], [
++		struct page *p __attribute__ ((unused));
++		p = ZERO_PAGE(0);
++	], [], [ZFS_META_LICENSE])
++])
++
++AC_DEFUN([ZFS_AC_KERNEL_ZERO_PAGE], [
++	AC_MSG_CHECKING([whether ZERO_PAGE() is GPL-only])
++	ZFS_LINUX_TEST_RESULT([zero_page_license], [
++		AC_MSG_RESULT(no)
++	], [
++		AC_MSG_RESULT(yes)
++		AC_DEFINE(HAVE_ZERO_PAGE_GPL_ONLY, 1,
++		    [ZERO_PAGE() is GPL-only])
++	])
++])
+diff --git a/config/kernel.m4 b/config/kernel.m4
+index a21293b04e..bdab4cf011 100644
+--- a/config/kernel.m4
++++ b/config/kernel.m4
+@@ -141,6 +141,7 @@ AC_DEFUN([ZFS_AC_KERNEL_TEST_SRC], [
+ 	ZFS_AC_KERNEL_SRC_PAGEMAP_FOLIO_WAIT_BIT
+ 	ZFS_AC_KERNEL_SRC_ADD_DISK
+ 	ZFS_AC_KERNEL_SRC_KTHREAD
++	ZFS_AC_KERNEL_SRC_ZERO_PAGE
+ 
+ 	AC_MSG_CHECKING([for available kernel interfaces])
+ 	ZFS_LINUX_TEST_COMPILE_ALL([kabi])
+@@ -255,6 +256,7 @@ AC_DEFUN([ZFS_AC_KERNEL_TEST_RESULT], [
+ 	ZFS_AC_KERNEL_PAGEMAP_FOLIO_WAIT_BIT
+ 	ZFS_AC_KERNEL_ADD_DISK
+ 	ZFS_AC_KERNEL_KTHREAD
++	ZFS_AC_KERNEL_ZERO_PAGE
+ ])
+ 
+ dnl #
+diff --git a/module/os/linux/zfs/abd_os.c b/module/os/linux/zfs/abd_os.c
+index d1d238a4e3..f7ebe4e096 100644
+--- a/module/os/linux/zfs/abd_os.c
++++ b/module/os/linux/zfs/abd_os.c
+@@ -184,8 +184,11 @@ abd_t *abd_zero_scatter = NULL;
+ 
+ struct page;
+ /*
+- * abd_zero_page we will be an allocated zero'd PAGESIZE buffer, which is
+- * assigned to set each of the pages of abd_zero_scatter.
++ * _KERNEL   - Will point to ZERO_PAGE if it is available or it will be
++ *             an allocated zero'd PAGESIZE buffer.
++ * Userspace - Will be an allocated zero'ed PAGESIZE buffer.
++ *
++ * abd_zero_page is assigned to each of the pages of abd_zero_scatter.
+  */
+ static struct page *abd_zero_page = NULL;
+ 
+@@ -465,15 +468,19 @@ abd_alloc_zero_scatter(void)
+ 	struct scatterlist *sg = NULL;
+ 	struct sg_table table;
+ 	gfp_t gfp = __GFP_NOWARN | GFP_NOIO;
+-	gfp_t gfp_zero_page = gfp | __GFP_ZERO;
+ 	int nr_pages = abd_chunkcnt_for_bytes(SPA_MAXBLOCKSIZE);
+ 	int i = 0;
+ 
++#if defined(HAVE_ZERO_PAGE_GPL_ONLY)
++	gfp_t gfp_zero_page = gfp | __GFP_ZERO;
+ 	while ((abd_zero_page = __page_cache_alloc(gfp_zero_page)) == NULL) {
+ 		ABDSTAT_BUMP(abdstat_scatter_page_alloc_retry);
+ 		schedule_timeout_interruptible(1);
+ 	}
+ 	abd_mark_zfs_page(abd_zero_page);
++#else
++	abd_zero_page = ZERO_PAGE(0);
++#endif /* HAVE_ZERO_PAGE_GPL_ONLY */
+ 
+ 	while (sg_alloc_table(&table, nr_pages, gfp)) {
+ 		ABDSTAT_BUMP(abdstat_scatter_sg_table_retry);
+@@ -694,8 +701,10 @@ abd_free_zero_scatter(void)
+ 	abd_zero_scatter = NULL;
+ 	ASSERT3P(abd_zero_page, !=, NULL);
+ #if defined(_KERNEL)
++#if defined(HAVE_ZERO_PAGE_GPL_ONLY)
+ 	abd_unmark_zfs_page(abd_zero_page);
+ 	__free_page(abd_zero_page);
++#endif /* HAVE_ZERO_PAGE_GPL_ONLY */
+ #else
+ 	umem_free(abd_zero_page, PAGESIZE);
+ #endif /* _KERNEL */
+-- 
+2.32.0
+

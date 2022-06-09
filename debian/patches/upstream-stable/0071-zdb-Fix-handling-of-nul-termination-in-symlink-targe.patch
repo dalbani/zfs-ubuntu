@@ -1,0 +1,44 @@
+From 4184b78be174eb11bdd95699c6e3b08b66930af6 Mon Sep 17 00:00:00 2001
+From: Mark Johnston <markjdb@gmail.com>
+Date: Fri, 20 May 2022 13:32:49 -0400
+Subject: [PATCH] zdb: Fix handling of nul termination in symlink targets
+
+The SA attribute containing the symlink target does not include a nul
+terminator, so when printing the target zdb would sometimes include
+garbage at the end of the string.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Reviewed-by: Ryan Moeller <ryan@iXsystems.com>
+Signed-off-by: Mark Johnston <markj@FreeBSD.org>
+Closes #13482
+---
+ cmd/zdb/zdb.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/cmd/zdb/zdb.c b/cmd/zdb/zdb.c
+index 75688205fa..1a6dcf8213 100644
+--- a/cmd/zdb/zdb.c
++++ b/cmd/zdb/zdb.c
+@@ -3125,13 +3125,18 @@ dump_znode_symlink(sa_handle_t *hdl)
+ {
+ 	int sa_symlink_size = 0;
+ 	char linktarget[MAXPATHLEN];
+-	linktarget[0] = '\0';
+ 	int error;
+ 
+ 	error = sa_size(hdl, sa_attr_table[ZPL_SYMLINK], &sa_symlink_size);
+ 	if (error || sa_symlink_size == 0) {
+ 		return;
+ 	}
++	if (sa_symlink_size >= sizeof (linktarget)) {
++		(void) printf("symlink size %d is too large\n",
++		    sa_symlink_size);
++		return;
++	}
++	linktarget[sa_symlink_size] = '\0';
+ 	if (sa_lookup(hdl, sa_attr_table[ZPL_SYMLINK],
+ 	    &linktarget, sa_symlink_size) == 0)
+ 		(void) printf("\ttarget	%s\n", linktarget);
+-- 
+2.32.0
+

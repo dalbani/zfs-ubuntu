@@ -1,0 +1,54 @@
+From 4252517f5fad1140787cdc74b0faf44395285c36 Mon Sep 17 00:00:00 2001
+From: Savyasachee Jha <genghizkhan91@hawkradius.com>
+Date: Mon, 14 Feb 2022 18:15:16 +0530
+Subject: [PATCH] Remove absolute paths to udev rules and binaries for dracut
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Since dracut functions can locate both udev rules and binaries, there is
+no point in keeping absolute paths in the module setup script. It also
+breaks the --sysroot option in dracut. This commit removes mentions to
+absolute paths for binaries and udev rules.
+
+Reviewed-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Reviewed-by: Andrew J. Hesford <ajh@sideband.org>
+Signed-off-by: Savyasachee Jha <hi@savyasacheejha.com>
+Closes #13010
+---
+ contrib/dracut/90zfs/module-setup.sh.in | 17 +++++------------
+ 1 file changed, 5 insertions(+), 12 deletions(-)
+
+diff --git a/contrib/dracut/90zfs/module-setup.sh.in b/contrib/dracut/90zfs/module-setup.sh.in
+index 3b86c293dc..19f1d1b161 100755
+--- a/contrib/dracut/90zfs/module-setup.sh.in
++++ b/contrib/dracut/90zfs/module-setup.sh.in
+@@ -23,20 +23,13 @@ installkernel() {
+ }
+ 
+ install() {
+-	for i in "90-zfs.rules" "69-vdev.rules" "60-zvol.rules"; do
+-		if ! dracut_install "@udevdir@/$i"; then
+-			dfatal "Failed to install udev rule: $i"
+-			exit 1
+-		fi
+-	done
++	inst_rules 90-zfs.rules 69-vdev.rules 60-zvol.rules
+ 	
+ 	inst_multiple \
+-		@sbindir@/zgenhostid \
+-		@sbindir@/zfs \
+-		@sbindir@/zpool \
+-		@udevdir@/vdev_id \
+-		@udevdir@/zvol_id \
+-		@mounthelperdir@/mount.zfs \
++		zgenhostid \
++		zfs \
++		zpool \
++		mount.zfs \
+ 		hostid \
+ 		grep \
+ 		awk \
+-- 
+2.32.0
+

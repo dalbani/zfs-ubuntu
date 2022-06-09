@@ -1,3 +1,11 @@
+zfs-linux (2.1.4-0ubuntu2) kinetic; urgency=medium
+
+  * Update upstream-stable patches for v5.19 compat.
+  * Drop upstreamed patches.
+  * Update symbols file with the future 2.1.5 symbols.
+
+ -- Dimitri John Ledkov <dimitri.ledkov@canonical.com>  Thu, 09 Jun 2022 14:31:42 +0100
+
 zfs-linux (2.1.4-0ubuntu1) kinetic; urgency=medium
 
   * Update upstream-stable patches for more v5.18 compat.

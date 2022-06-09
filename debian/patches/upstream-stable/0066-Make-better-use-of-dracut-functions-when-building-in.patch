@@ -1,0 +1,135 @@
+From 0671f7270695278020254615f421caa77193a2c0 Mon Sep 17 00:00:00 2001
+From: Savyasachee Jha <genghizkhan91@hawkradius.com>
+Date: Tue, 25 Jan 2022 03:22:48 +0000
+Subject: [PATCH] Make better use of dracut functions when building initramfs
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Setting up the module involves multiple redundant calls to a bunch of
+dracut functions wheich can be combined into one. Additionally, the mass
+of code required to load libgcc_s.so* can be replaced with one dracut
+function. This has the additional effect of removing errors involving
+the non-installation of libgcc_s.so* which are seen on debian bullseye
+when using version 2.1.2-1~bpo11+1 from the backports repository.
+
+The systemd binaries are separated out into their own `dracut_install`
+function call so they do not get pulled in when dracut does not load the
+systemd module.
+
+Reviewed-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Reviewed-by: Andrew J. Hesford <ajh@sideband.org>
+Signed-off-by: Savyasachee Jha <hi@savyasacheejha.com>
+Closes #13010
+---
+ contrib/dracut/90zfs/module-setup.sh.in | 77 ++++++++-----------------
+ 1 file changed, 24 insertions(+), 53 deletions(-)
+
+diff --git a/contrib/dracut/90zfs/module-setup.sh.in b/contrib/dracut/90zfs/module-setup.sh.in
+index fbf32b6588..d196acdbf0 100755
+--- a/contrib/dracut/90zfs/module-setup.sh.in
++++ b/contrib/dracut/90zfs/module-setup.sh.in
+@@ -20,59 +20,30 @@ depends() {
+ 
+ installkernel() {
+ 	instmods zfs
+-	instmods zcommon
+-	instmods znvpair
+-	instmods zavl
+-	instmods zunicode
+-	instmods zlua
+-	instmods icp
+-	instmods spl
+-	instmods zlib_deflate
+-	instmods zlib_inflate
+ }
+ 
+ install() {
+-	inst_rules @udevruledir@/90-zfs.rules
+-	inst_rules @udevruledir@/69-vdev.rules
+-	inst_rules @udevruledir@/60-zvol.rules
+-	dracut_install hostid
+-	dracut_install grep
+-	dracut_install @sbindir@/zgenhostid
+-	dracut_install @sbindir@/zfs
+-	dracut_install @sbindir@/zpool
+-	# Workaround for https://github.com/openzfs/zfs/issues/4749 by
+-	# ensuring libgcc_s.so(.1) is included
+-	if ldd @sbindir@/zpool | grep -qF 'libgcc_s.so'; then
+-		# Dracut will have already tracked and included it
+-		:;
+-	elif command -v gcc-config >/dev/null 2>&1; then
+-		# On systems with gcc-config (Gentoo, Funtoo, etc.):
+-		# Use the current profile to resolve the appropriate path
+-		s="$(gcc-config -c)"
+-		dracut_install "/usr/lib/gcc/${s%-*}/${s##*-}/libgcc_s.so"*
+-	elif [ "$(echo /usr/lib/libgcc_s.so*)" != "/usr/lib/libgcc_s.so*" ]; then
+-		# Try a simple path first
+-		dracut_install /usr/lib/libgcc_s.so*
+-	elif [ "$(echo /lib*/libgcc_s.so*)" != "/lib*/libgcc_s.so*" ]; then
+-		# SUSE
+-		dracut_install /lib*/libgcc_s.so*
+-	else
+-		# Fallback: Guess the path and include all matches
+-		dracut_install /usr/lib*/gcc/**/libgcc_s.so*
+-	fi
+-	# shellcheck disable=SC2050
+-	if [ @LIBFETCH_DYNAMIC@ -gt 0 ]; then
+-		for d in $libdirs; do
+-			[ -e "$d/@LIBFETCH_SONAME@" ] && dracut_install "$d/@LIBFETCH_SONAME@"
+-		done
+-	fi
+-	dracut_install @mounthelperdir@/mount.zfs
+-	dracut_install @udevdir@/vdev_id
+-	dracut_install awk
+-	dracut_install cut
+-	dracut_install tr
+-	dracut_install head
+-	dracut_install @udevdir@/zvol_id
++	inst_rules \
++		@udevruledir@/90-zfs.rules \
++		@udevruledir@/69-vdev.rules \
++		@udevruledir@/60-zvol.rules
++	
++	dracut_install \
++		@sbindir@/zgenhostid \
++		@sbindir@/zfs \
++		@sbindir@/zpool \
++		@udevdir@/vdev_id \
++		@udevdir@/zvol_id \
++		@mounthelperdir@/mount.zfs \
++		hostid \
++		grep \
++		awk \
++		tr \
++		cut \
++		head
++		
++	inst_libdir_file "libgcc_s.so*"
++	
+ 	inst_hook cmdline 95 "${moddir}/parse-zfs.sh"
+ 	if [ -n "$systemdutildir" ] ; then
+ 		inst_script "${moddir}/zfs-generator.sh" "$systemdutildir"/system-generators/dracut-zfs-generator
+@@ -103,6 +74,9 @@ install() {
+ 	fi
+ 
+ 	if dracut_module_included "systemd"; then
++
++		dracut_install systemd-ask-password systemd-tty-ask-password-agent
++
+ 		mkdir -p "${initdir}/$systemdsystemunitdir/zfs-import.target.wants"
+ 		for _service in "zfs-import-scan.service" "zfs-import-cache.service" ; do
+ 			dracut_install "@systemdunitdir@/$_service"
+@@ -116,9 +90,6 @@ install() {
+ 		ln -s ../zfs-env-bootfs.service "${initdir}/${systemdsystemunitdir}/zfs-import.target.wants"/zfs-env-bootfs.service
+ 		type mark_hostonly >/dev/null 2>&1 && mark_hostonly @systemdunitdir@/zfs-env-bootfs.service
+ 
+-		dracut_install systemd-ask-password
+-		dracut_install systemd-tty-ask-password-agent
+-
+ 		mkdir -p "${initdir}/$systemdsystemunitdir/initrd.target.wants"
+ 		dracut_install @systemdunitdir@/zfs-import.target
+ 		if ! [ -L "${initdir}/$systemdsystemunitdir/initrd.target.wants"/zfs-import.target ]; then
+-- 
+2.32.0
+

@@ -1,0 +1,63 @@
+From eee389ba2e8c07e230ac876e759902343a1f7469 Mon Sep 17 00:00:00 2001
+From: Aidan Harris <me@aidanharr.is>
+Date: Fri, 6 May 2022 18:57:37 +0000
+Subject: [PATCH] Fix functions without a prototype
+
+clang-15 emits the following error message for functions without
+a prototype:
+
+fs/zfs/os/linux/spl/spl-kmem-cache.c:1423:27: error:
+  a function declaration without a prototype is deprecated
+  in all versions of C [-Werror,-Wstrict-prototypes]
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Aidan Harris <me@aidanharr.is>
+Closes #13421
+---
+ module/icp/algs/modes/gcm.c          | 2 +-
+ module/os/linux/spl/spl-kmem-cache.c | 2 +-
+ module/zfs/dbuf.c                    | 2 +-
+ 3 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/module/icp/algs/modes/gcm.c b/module/icp/algs/modes/gcm.c
+index 7332834cbe..dc8dd929f6 100644
+--- a/module/icp/algs/modes/gcm.c
++++ b/module/icp/algs/modes/gcm.c
+@@ -798,7 +798,7 @@ static gcm_impl_ops_t *gcm_supp_impl[ARRAY_SIZE(gcm_all_impl)];
+  * fallback to the fastest generic implementation.
+  */
+ const gcm_impl_ops_t *
+-gcm_impl_get_ops()
++gcm_impl_get_ops(void)
+ {
+ 	if (!kfpu_allowed())
+ 		return (&gcm_generic_impl);
+diff --git a/module/os/linux/spl/spl-kmem-cache.c b/module/os/linux/spl/spl-kmem-cache.c
+index 2151ef008f..5a318e0a53 100644
+--- a/module/os/linux/spl/spl-kmem-cache.c
++++ b/module/os/linux/spl/spl-kmem-cache.c
+@@ -1421,7 +1421,7 @@ EXPORT_SYMBOL(spl_kmem_cache_reap_now);
+  * it should do no harm.
+  */
+ int
+-spl_kmem_cache_reap_active()
++spl_kmem_cache_reap_active(void)
+ {
+ 	return (0);
+ }
+diff --git a/module/zfs/dbuf.c b/module/zfs/dbuf.c
+index c960fc0988..247eeddb6c 100644
+--- a/module/zfs/dbuf.c
++++ b/module/zfs/dbuf.c
+@@ -3884,7 +3884,7 @@ dmu_buf_get_user(dmu_buf_t *db_fake)
+ }
+ 
+ void
+-dmu_buf_user_evict_wait()
++dmu_buf_user_evict_wait(void)
+ {
+ 	taskq_wait(dbu_evict_taskq);
+ }
+-- 
+2.32.0
+
