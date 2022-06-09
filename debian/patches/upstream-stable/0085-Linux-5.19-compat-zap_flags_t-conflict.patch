@@ -1,0 +1,38 @@
+From 69430e39e3b78afa5c9c446e4c0bd309ef2d2fce Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Fri, 27 May 2022 15:56:05 -0700
+Subject: [PATCH] Linux 5.19 compat: zap_flags_t conflict
+
+As of the Linux 5.19 kernel an identically named zap_flags_t typedef
+is declared in the include/linux/mm_types.h linux header.  Sadly,
+the inclusion of this header cannot be easily avoided.  To resolve
+the conflict a #define is used to remap the name in the OpenZFS
+sources when building against the Linux kernel.
+
+Reviewed-by: Tony Hutter <hutter2@llnl.gov>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #13515
+---
+ include/sys/zap.h | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/include/sys/zap.h b/include/sys/zap.h
+index b19b464387..fd7a3a1599 100644
+--- a/include/sys/zap.h
++++ b/include/sys/zap.h
+@@ -110,7 +110,12 @@ typedef enum zap_flags {
+ 	 * already randomly distributed.
+ 	 */
+ 	ZAP_FLAG_PRE_HASHED_KEY = 1 << 2,
++#if defined(__linux__) && defined(_KERNEL)
++} zfs_zap_flags_t;
++#define	zap_flags_t	zfs_zap_flags_t
++#else
+ } zap_flags_t;
++#endif
+ 
+ /*
+  * Create a new zapobj with no attributes and return its object number.
+-- 
+2.32.0
+

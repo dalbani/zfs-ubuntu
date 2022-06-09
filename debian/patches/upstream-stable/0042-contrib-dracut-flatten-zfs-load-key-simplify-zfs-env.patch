@@ -1,0 +1,117 @@
+From 71a1d8e5dc2ee3b9037cd8d4012a5e26fd53b8c1 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Mon, 4 Apr 2022 22:52:43 +0200
+Subject: [PATCH] contrib; dracut: flatten zfs-load-key, simplify
+ zfs-env-bootfs
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Upstream-commit: fec2c613a49192942200d26bd20bf434649687b7
+Upstream-change: drop 90zfs/module-setup.sh.in cleanups that don't apply
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #13291
+---
+ .../dracut/90zfs/zfs-env-bootfs.service.in    |  2 +-
+ contrib/dracut/90zfs/zfs-load-key.sh.in       | 74 +++++++++----------
+ 2 files changed, 36 insertions(+), 40 deletions(-)
+
+diff --git a/contrib/dracut/90zfs/zfs-env-bootfs.service.in b/contrib/dracut/90zfs/zfs-env-bootfs.service.in
+index e143cb5ec1..34c88037ca 100644
+--- a/contrib/dracut/90zfs/zfs-env-bootfs.service.in
++++ b/contrib/dracut/90zfs/zfs-env-bootfs.service.in
+@@ -8,7 +8,7 @@ Before=zfs-import.target
+ 
+ [Service]
+ Type=oneshot
+-ExecStart=/bin/sh -c "exec systemctl set-environment BOOTFS=$(@sbindir@/zpool list -H -o bootfs | grep -m1 -v '^-$')"
++ExecStart=/bin/sh -c "exec systemctl set-environment BOOTFS=$(@sbindir@/zpool list -H -o bootfs | grep -m1 -vFx -)"
+ 
+ [Install]
+ WantedBy=zfs-import.target
+diff --git a/contrib/dracut/90zfs/zfs-load-key.sh.in b/contrib/dracut/90zfs/zfs-load-key.sh.in
+index 9fbef8f680..97e9246d46 100755
+--- a/contrib/dracut/90zfs/zfs-load-key.sh.in
++++ b/contrib/dracut/90zfs/zfs-load-key.sh.in
+@@ -20,42 +20,38 @@ if [ "$BOOTFS" = "zfs:AUTO" ]; then
+     BOOTFS="$(zpool get -Ho value bootfs | grep -m1 -vFx -)"
+ fi
+ 
+-# if pool encryption is active and the zfs command understands '-o encryption'
+-if [ "$(zpool list -H -o feature@encryption "${BOOTFS%%/*}")" = 'active' ]; then
+-    # if the root dataset has encryption enabled
+-    ENCRYPTIONROOT="$(zfs get -H -o value encryptionroot "${BOOTFS}")"
+-    if ! [ "${ENCRYPTIONROOT}" = "-" ]; then
+-        KEYSTATUS="$(zfs get -H -o value keystatus "${ENCRYPTIONROOT}")"
+-        # continue only if the key needs to be loaded
+-        [ "$KEYSTATUS" = "unavailable" ] || exit 0
+-
+-        KEYLOCATION="$(zfs get -H -o value keylocation "${ENCRYPTIONROOT}")"
+-        case "${KEYLOCATION%%://*}" in
+-            prompt)
+-                for _ in 1 2 3; do
+-                    systemd-ask-password --no-tty "Encrypted ZFS password for ${BOOTFS}" | zfs load-key "${ENCRYPTIONROOT}" && break
+-                done
+-                ;;
+-            http*)
+-                systemctl start network-online.target
+-                zfs load-key "${ENCRYPTIONROOT}"
+-                ;;
+-            file)
+-                KEYFILE="${KEYLOCATION#file://}"
+-                [ -r "${KEYFILE}" ] || udevadm settle
+-                [ -r "${KEYFILE}" ] || {
+-                    info "Waiting for key ${KEYFILE} for ${ENCRYPTIONROOT}..."
+-                    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+-                        sleep 0.5s
+-                        [ -r "${KEYFILE}" ] && break
+-                    done
+-                }
+-                [ -r "${KEYFILE}" ] || warn "Key ${KEYFILE} for ${ENCRYPTIONROOT} hasn't appeared. Trying anyway."
+-                zfs load-key "${ENCRYPTIONROOT}"
+-                ;;
+-            *)
+-                zfs load-key "${ENCRYPTIONROOT}"
+-                ;;
+-        esac
+-    fi
+-fi
++[ "$(zpool get -Ho value feature@encryption "${BOOTFS%%/*}")" = 'active' ] || return 0
++
++ENCRYPTIONROOT="$(zfs get -Ho value encryptionroot "${BOOTFS}")"
++[ "${ENCRYPTIONROOT}" = "-" ] && return 0
++
++[ "$(zfs get -Ho value keystatus "${ENCRYPTIONROOT}")" = "unavailable" ] || return 0
++
++KEYLOCATION="$(zfs get -H -o value keylocation "${ENCRYPTIONROOT}")"
++case "${KEYLOCATION%%://*}" in
++    prompt)
++        for _ in 1 2 3; do
++            systemd-ask-password --no-tty "Encrypted ZFS password for ${BOOTFS}" | zfs load-key "${ENCRYPTIONROOT}" && break
++        done
++        ;;
++    http*)
++        systemctl start network-online.target
++        zfs load-key "${ENCRYPTIONROOT}"
++        ;;
++    file)
++        KEYFILE="${KEYLOCATION#file://}"
++        [ -r "${KEYFILE}" ] || udevadm settle
++        [ -r "${KEYFILE}" ] || {
++            info "ZFS: Waiting for key ${KEYFILE} for ${ENCRYPTIONROOT}..."
++            for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
++                sleep 0.5s
++                [ -r "${KEYFILE}" ] && break
++            done
++        }
++        [ -r "${KEYFILE}" ] || warn "ZFS: Key ${KEYFILE} for ${ENCRYPTIONROOT} hasn't appeared. Trying anyway."
++        zfs load-key "${ENCRYPTIONROOT}"
++        ;;
++    *)
++        zfs load-key "${ENCRYPTIONROOT}"
++        ;;
++esac
+-- 
+2.32.0
+

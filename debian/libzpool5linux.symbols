@@ -10,7 +10,6 @@ libzpool.so.5 libzpool5linux #MINVER#
  EdonRHash@Base 0.8.2
  EdonRInit@Base 0.8.2
  EdonRUpdate@Base 0.8.2
- HIST_isError@Base 2.0
  SHA1Final@Base 0.8.2
  SHA1Init@Base 0.8.2
  SHA1Update@Base 0.8.2
@@ -940,6 +939,7 @@ libzpool.so.5 libzpool5linux #MINVER#
  dsl_pool_create@Base 0.8.2
  dsl_pool_create_obsolete_bpobj@Base 0.8.2
  dsl_pool_create_origin@Base 0.8.2
+ dsl_pool_deferred_space@Base 2.1.4-0ubuntu2
  dsl_pool_destroy_obsolete_bpobj@Base 0.8.2
  dsl_pool_dirty_space@Base 0.8.2
  dsl_pool_hold@Base 0.8.2
@@ -1879,6 +1879,7 @@ libzpool.so.5 libzpool5linux #MINVER#
  spa_mmp_history_set_skip@Base 0.8.2
  spa_mode@Base 0.8.2
  spa_mode_global@Base 0.8.2
+ spa_mode_readable_spacemaps@Base 2.1.4-0ubuntu2
  spa_multihost@Base 0.8.2
  spa_name@Base 0.8.2
  spa_namespace_lock@Base 0.8.2
@@ -2131,6 +2132,7 @@ libzpool.so.5 libzpool5linux #MINVER#
  vdev_draid_generate_perms@Base 2.1
  vdev_draid_lookup_map@Base 2.1
  vdev_draid_map_alloc_empty@Base 2.1
+ vdev_draid_map_verify_empty@Base 2.1.4-0ubuntu2
  vdev_draid_missing@Base 2.1
  vdev_draid_ops@Base 2.1
  vdev_draid_rand@Base 2.1
@@ -2243,6 +2245,7 @@ libzpool.so.5 libzpool5linux #MINVER#
  (arch=amd64)vdev_raidz_avx512f_impl@Base 0.8.2
  (arch=arm64)vdev_raidz_aarch64_neon_impl@Base 0.8.2
  (arch=arm64)vdev_raidz_aarch64_neonx2_impl@Base 0.8.2
+ vdev_raidz_checksum_error@Base 2.1.4-0ubuntu2
  vdev_raidz_child_done@Base 2.1
  vdev_raidz_generate_parity@Base 0.8.2
  vdev_raidz_generate_parity_row@Base 2.1
@@ -2456,6 +2459,7 @@ libzpool.so.5 libzpool5linux #MINVER#
  zfs_HIST_countFast_wksp@Base 2.0
  zfs_HIST_count_simple@Base 2.0
  zfs_HIST_count_wksp@Base 2.0
+ zfs_HIST_isError@Base 2.1.4-0ubuntu2
  zfs_HUF_buildCTable@Base 2.0
  zfs_HUF_buildCTable_wksp@Base 2.0
  zfs_HUF_compress1X@Base 2.0
@@ -3332,6 +3336,7 @@ libzpool.so.5 libzpool5linux #MINVER#
  zthr_destroy@Base 0.8.2
  zthr_has_waiters@Base 2.0
  zthr_iscancelled@Base 0.8.2
+ zthr_iscurthread@Base 2.1.4-0ubuntu2
  zthr_resume@Base 0.8.2
  zthr_wait_cycle_done@Base 2.0
  zthr_wakeup@Base 0.8.2

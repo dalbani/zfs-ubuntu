@@ -1,0 +1,100 @@
+From fde66e583d9b9fc2c5ee53a1995157482ace35d3 Mon Sep 17 00:00:00 2001
+From: Ryan Moeller <freqlabs@FreeBSD.org>
+Date: Tue, 24 May 2022 12:40:20 -0400
+Subject: [PATCH] FreeBSD: libspl: Add locking around statfs globals
+
+Makes getmntent and getmntany thread-safe for external consumers of
+libzfs zpool_disable_datasets, zfs_iter_mounted, libzfs_mnttab_update,
+libzfs_mnttab_find.
+
+Reviewed-by: Alexander Motin <mav@FreeBSD.org>
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Ryan Moeller <freqlabs@FreeBSD.org>
+Closes #13484
+---
+ lib/libspl/os/freebsd/mnttab.c | 16 +++++++++++++++-
+ 1 file changed, 15 insertions(+), 1 deletion(-)
+
+diff --git a/lib/libspl/os/freebsd/mnttab.c b/lib/libspl/os/freebsd/mnttab.c
+index d830257fbd..a240ca70ba 100644
+--- a/lib/libspl/os/freebsd/mnttab.c
++++ b/lib/libspl/os/freebsd/mnttab.c
+@@ -39,6 +39,7 @@ __FBSDID("$FreeBSD$");
+ 
+ #include <ctype.h>
+ #include <errno.h>
++#include <pthread.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -136,6 +137,7 @@ statfs2mnttab(struct statfs *sfs, struct mnttab *mp)
+ 	mp->mnt_mntopts = gmntopts;
+ }
+ 
++static pthread_rwlock_t gsfs_lock = PTHREAD_RWLOCK_INITIALIZER;
+ static struct statfs *gsfs = NULL;
+ static int allfs = 0;
+ 
+@@ -145,6 +147,8 @@ statfs_init(void)
+ 	struct statfs *sfs;
+ 	int error;
+ 
++	(void) pthread_rwlock_wrlock(&gsfs_lock);
++
+ 	if (gsfs != NULL) {
+ 		free(gsfs);
+ 		gsfs = NULL;
+@@ -162,6 +166,7 @@ statfs_init(void)
+ 	sfs = realloc(gsfs, allfs * sizeof (gsfs[0]));
+ 	if (sfs != NULL)
+ 		gsfs = sfs;
++	(void) pthread_rwlock_unlock(&gsfs_lock);
+ 	return (0);
+ fail:
+ 	error = errno;
+@@ -169,6 +174,7 @@ fail:
+ 		free(gsfs);
+ 	gsfs = NULL;
+ 	allfs = 0;
++	(void) pthread_rwlock_unlock(&gsfs_lock);
+ 	return (error);
+ }
+ 
+@@ -181,6 +187,8 @@ getmntany(FILE *fd __unused, struct mnttab *mgetp, struct mnttab *mrefp)
+ 	if (error != 0)
+ 		return (error);
+ 
++	(void) pthread_rwlock_rdlock(&gsfs_lock);
++
+ 	for (i = 0; i < allfs; i++) {
+ 		if (mrefp->mnt_special != NULL &&
+ 		    strcmp(mrefp->mnt_special, gsfs[i].f_mntfromname) != 0) {
+@@ -195,8 +203,10 @@ getmntany(FILE *fd __unused, struct mnttab *mgetp, struct mnttab *mrefp)
+ 			continue;
+ 		}
+ 		statfs2mnttab(&gsfs[i], mgetp);
++		(void) pthread_rwlock_unlock(&gsfs_lock);
+ 		return (0);
+ 	}
++	(void) pthread_rwlock_unlock(&gsfs_lock);
+ 	return (-1);
+ }
+ 
+@@ -214,9 +224,13 @@ getmntent(FILE *fp, struct mnttab *mp)
+ 		if (error != 0)
+ 			return (error);
+ 	}
+-	if (nfs >= allfs)
++	(void) pthread_rwlock_rdlock(&gsfs_lock);
++	if (nfs >= allfs) {
++		(void) pthread_rwlock_unlock(&gsfs_lock);
+ 		return (-1);
++	}
+ 	statfs2mnttab(&gsfs[nfs], mp);
++	(void) pthread_rwlock_unlock(&gsfs_lock);
+ 	if (lseek(fileno(fp), 1, SEEK_CUR) == -1)
+ 		return (errno);
+ 	return (0);
+-- 
+2.32.0
+

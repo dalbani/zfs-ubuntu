@@ -1,0 +1,33 @@
+From 2a64eeb6c762aadcce5540531ac0f178ce8eea3e Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Tue, 10 May 2022 22:36:37 +0200
+Subject: [PATCH] man: zpool-import.8: -d -or -c
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Reviewed-by: George Melikov <mail@gmelikov.ru>
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #13437
+---
+ man/man8/zpool-import.8 | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/man/man8/zpool-import.8 b/man/man8/zpool-import.8
+index 39b0e17ef5..5462e4ebd2 100644
+--- a/man/man8/zpool-import.8
++++ b/man/man8/zpool-import.8
+@@ -71,7 +71,8 @@
+ .Xc
+ Lists pools available to import.
+ If the
+-.Fl d or
++.Fl d
++or
+ .Fl c
+ options are not specified, this command searches for devices using libblkid
+ on Linux and geom on
+-- 
+2.32.0
+

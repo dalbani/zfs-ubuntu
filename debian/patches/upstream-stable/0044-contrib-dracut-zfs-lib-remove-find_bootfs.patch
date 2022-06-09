@@ -1,0 +1,73 @@
+From 5c97f76f5a9c77254f493e7cb27e75d568e3393c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Mon, 4 Apr 2022 23:16:59 +0200
+Subject: [PATCH] contrib: dracut: zfs-lib: remove find_bootfs
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Upstream-commit: dac0b0785a795efe3bbb5367af35e2c4fbe32040
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #13291
+---
+ contrib/dracut/90zfs/mount-zfs.sh.in |  4 ++--
+ contrib/dracut/90zfs/zfs-lib.sh.in   | 25 -------------------------
+ 2 files changed, 2 insertions(+), 27 deletions(-)
+
+diff --git a/contrib/dracut/90zfs/mount-zfs.sh.in b/contrib/dracut/90zfs/mount-zfs.sh.in
+index 2288c80aed..5fd406231a 100755
+--- a/contrib/dracut/90zfs/mount-zfs.sh.in
++++ b/contrib/dracut/90zfs/mount-zfs.sh.in
+@@ -28,10 +28,10 @@ ZFS_DATASET=
+ ZFS_POOL=
+ 
+ if [ "${root}" = "zfs:AUTO" ] ; then
+-	if ! ZFS_DATASET="$(find_bootfs)" ; then
++	if ! ZFS_DATASET="$(zpool get -Ho value bootfs | grep -m1 -vFx -)"; then
+ 		# shellcheck disable=SC2086
+ 		zpool import -N -a ${ZPOOL_IMPORT_OPTS}
+-		if ! ZFS_DATASET="$(find_bootfs)" ; then
++		if ! ZFS_DATASET="$(zpool get -Ho value bootfs | grep -m1 -vFx -)"; then
+ 			warn "ZFS: No bootfs attribute found in importable pools."
+ 			zpool export -aF
+ 
+diff --git a/contrib/dracut/90zfs/zfs-lib.sh.in b/contrib/dracut/90zfs/zfs-lib.sh.in
+index 6912ad0901..f456e05715 100755
+--- a/contrib/dracut/90zfs/zfs-lib.sh.in
++++ b/contrib/dracut/90zfs/zfs-lib.sh.in
+@@ -27,31 +27,6 @@ if getargbool 0 zfs_force -y zfs.force -y zfsforce ; then
+     ZPOOL_IMPORT_OPTS="${ZPOOL_IMPORT_OPTS} -f"
+ fi
+ 
+-# find_bootfs
+-#   returns the first dataset with the bootfs attribute.
+-find_bootfs() {
+-    IFS="${NEWLINE}"
+-    for dataset in $(zpool list -H -o bootfs); do
+-        case "${dataset}" in
+-            "" | "-")
+-                continue
+-                ;;
+-            "no pools available")
+-                IFS="${OLDIFS}"
+-                return 1
+-                ;;
+-            *)
+-                IFS="${OLDIFS}"
+-                echo "${dataset}"
+-                return 0
+-                ;;
+-        esac
+-    done
+-
+-    IFS="${OLDIFS}"
+-    return 1
+-}
+-
+ # import_pool POOL
+ #   imports the given zfs pool if it isn't imported already.
+ import_pool() {
+-- 
+2.32.0
+

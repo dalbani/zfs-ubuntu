@@ -1,0 +1,48 @@
+From 1d54deb42faacdbf82569300cd5ba18a9d35e9e9 Mon Sep 17 00:00:00 2001
+From: Richard Laager <rlaager@wiktel.com>
+Date: Fri, 22 Apr 2022 17:37:03 -0500
+Subject: [PATCH] zvol_wait: Ignore locked zvols
+
+"When an encrypted zvol is locked the zfs-volume-wait service does not
+start.  The /sbin/zvol_wait should not wait for links when the volume
+has property keystatus=unavailable."
+-- https://bugs.launchpad.net/ubuntu/+source/zfs-linux/+bug/1888405
+
+Reviewed-by: Tony Hutter <hutter2@llnl.gov>
+Reviewed-by: Damian Szuberski <szuberskidamian@gmail.com>
+Thanks: James Dingwall <james-launchpad@dingwall.me.uk>
+Signed-off-by: Richard Laager <rlaager@wiktel.com>
+Closes #10662
+---
+ cmd/zvol_wait/zvol_wait | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/cmd/zvol_wait/zvol_wait b/cmd/zvol_wait/zvol_wait
+index 2aa929b0ca..f1fa42e27d 100755
+--- a/cmd/zvol_wait/zvol_wait
++++ b/cmd/zvol_wait/zvol_wait
+@@ -28,15 +28,17 @@ filter_out_deleted_zvols() {
+ list_zvols() {
+ 	read -r default_volmode < /sys/module/zfs/parameters/zvol_volmode
+ 	zfs list -t volume -H -o \
+-	    name,volmode,receive_resume_token,redact_snaps |
+-	    while IFS="	" read -r name volmode token redacted; do # IFS=\t here!
++	    name,volmode,receive_resume_token,redact_snaps,keystatus |
++	    while IFS="	" read -r name volmode token redacted keystatus; do # IFS=\t here!
+ 
+-		# /dev links are not created for zvols with volmode = "none"
+-		# or for redacted zvols.
++		# /dev links are not created for zvols with volmode = "none",
++		# redacted zvols, or encrypted zvols for which the key has not
++		# been loaded.
+ 		[ "$volmode" = "none" ] && continue
+ 		[ "$volmode" = "default" ] && [ "$default_volmode" = "3" ] &&
+ 		    continue
+ 		[ "$redacted" = "-" ] || continue
++		[ "$keystatus" = "unavailable" ] && continue
+ 
+ 		# We also ignore partially received zvols if it is
+ 		# not an incremental receive, as those won't even have a block
+-- 
+2.32.0
+

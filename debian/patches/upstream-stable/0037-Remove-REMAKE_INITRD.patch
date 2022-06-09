@@ -1,0 +1,32 @@
+From bc03fee94db455c04d1204ea12f944052d40f72b Mon Sep 17 00:00:00 2001
+From: jokersus <lolivampireslave@gmail.com>
+Date: Tue, 30 Nov 2021 22:09:15 +0300
+Subject: [PATCH] Remove REMAKE_INITRD
+
+The option has been deprecated in dkms and will break packaging in
+future versions. See https://github.com/dell/dkms/commit/7114c62
+
+Upstream-commit: b5c16861e9fa91871540a101e92013e05182fc2f
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Reviewed-by: George Amanakis <gamanakis@gmail.com>
+Signed-off-by: jokersus <jokersus.cava@gmail.com>
+Closes #12781
+---
+ scripts/dkms.mkconf | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/scripts/dkms.mkconf b/scripts/dkms.mkconf
+index 408322fa12..4090efa087 100755
+--- a/scripts/dkms.mkconf
++++ b/scripts/dkms.mkconf
+@@ -68,7 +68,6 @@ POST_BUILD="scripts/dkms.postbuild
+   -t \${dkms_tree}
+ "
+ AUTOINSTALL="yes"
+-REMAKE_INITRD="no"
+ MAKE[0]="make"
+ STRIP[0]="\$(
+   [[ -r \${PACKAGE_CONFIG} ]] \\
+-- 
+2.32.0
+

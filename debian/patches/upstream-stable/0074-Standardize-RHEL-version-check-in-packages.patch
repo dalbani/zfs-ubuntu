@@ -1,0 +1,61 @@
+From ed16dd763579baeca6b7bdc04c14fc9cd2902f4a Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Wed, 25 May 2022 09:20:17 -0700
+Subject: [PATCH] Standardize RHEL version check in packages
+
+This is a follow up to 3c356622994 which standardizes how the RHEL
+version check is done.  This simpler "0%{?rhel}" check is used
+elsewhere in the packages so we do the same here.
+
+Reviewed-by: Neal Gompa <ngompa@datto.com>
+Reviewed-by: Rich Ercolani <rincebrain@gmail.com>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #13501
+---
+ rpm/generic/zfs-dkms.spec.in | 2 +-
+ rpm/generic/zfs-kmod.spec.in | 2 +-
+ rpm/generic/zfs.spec.in      | 2 +-
+ 3 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/rpm/generic/zfs-dkms.spec.in b/rpm/generic/zfs-dkms.spec.in
+index cc9628d744..55f0f1cf52 100644
+--- a/rpm/generic/zfs-dkms.spec.in
++++ b/rpm/generic/zfs-dkms.spec.in
+@@ -36,7 +36,7 @@ Obsoletes:      spl-dkms
+ Provides:       %{module}-kmod = %{version}
+ AutoReqProv:    no
+ 
+-%if (0%{?fedora}%{?suse_version}) || (0 < 0%{?rhel} && 0%{?rhel} < 9)
++%if (0%{?fedora}%{?suse_version}) || (0%{?rhel} && 0%{?rhel} < 9)
+ # We don't directly use it, but if this isn't installed, rpmbuild as root can
+ # crash+corrupt rpmdb
+ # See issue #12071
+diff --git a/rpm/generic/zfs-kmod.spec.in b/rpm/generic/zfs-kmod.spec.in
+index 9cf0be1ed6..3061fb6ade 100644
+--- a/rpm/generic/zfs-kmod.spec.in
++++ b/rpm/generic/zfs-kmod.spec.in
+@@ -57,7 +57,7 @@ BuildRequires:  gcc, make
+ BuildRequires:  elfutils-libelf-devel
+ %endif
+ 
+-%if (0%{?fedora}%{?suse_version}) || (0 < 0%{?rhel} && 0%{?rhel} < 9)
++%if (0%{?fedora}%{?suse_version}) || (0%{?rhel} && 0%{?rhel} < 9)
+ # We don't directly use it, but if this isn't installed, rpmbuild as root can
+ # crash+corrupt rpmdb
+ # See issue #12071
+diff --git a/rpm/generic/zfs.spec.in b/rpm/generic/zfs.spec.in
+index b0383d7b01..1cd3f6b520 100644
+--- a/rpm/generic/zfs.spec.in
++++ b/rpm/generic/zfs.spec.in
+@@ -144,7 +144,7 @@ BuildRequires:  openssl-devel
+ BuildRequires:  libtirpc-devel
+ %endif
+ 
+-%if (0%{?fedora}%{?suse_version}) || (0 < 0%{?rhel} && 0%{?rhel} < 9)
++%if (0%{?fedora}%{?suse_version}) || (0%{?rhel} && 0%{?rhel} < 9)
+ # We don't directly use it, but if this isn't installed, rpmbuild as root can
+ # crash+corrupt rpmdb
+ # See issue #12071
+-- 
+2.32.0
+

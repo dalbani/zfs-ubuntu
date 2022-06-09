@@ -1,0 +1,225 @@
+From 059a563810f50d28f38e4c2ea7ecef2c44c2fe61 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Mon, 4 Apr 2022 23:24:29 +0200
+Subject: [PATCH] contrib: dracut: inline single-use import_pool, move
+ single-use ask_for_password
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Also don't set ROOTFS_MOUNTED; the final mention was removed in dracut
+011 from July 2011
+
+Upstream-commit: eaf1e060453ad6a335b708c5e724092741d6d1d3
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #13291
+---
+ contrib/dracut/90zfs/mount-zfs.sh.in | 92 ++++++++++++++++++++--------
+ contrib/dracut/90zfs/zfs-lib.sh.in   | 62 ++-----------------
+ 2 files changed, 72 insertions(+), 82 deletions(-)
+
+diff --git a/contrib/dracut/90zfs/mount-zfs.sh.in b/contrib/dracut/90zfs/mount-zfs.sh.in
+index 5fd406231a..5d02a8d745 100755
+--- a/contrib/dracut/90zfs/mount-zfs.sh.in
++++ b/contrib/dracut/90zfs/mount-zfs.sh.in
+@@ -20,6 +20,42 @@ fi
+ info "ZFS: No sysroot.mount exists or zfs-generator did not extend it."
+ info "ZFS: Mounting root with the traditional mount-zfs.sh instead."
+ 
++# ask_for_password tries prompt cmd
++#
++# Wraps around plymouth ask-for-password and adds fallback to tty password ask
++# if plymouth is not present.
++ask_for_password() {
++    tries="$1"
++    prompt="$2"
++    cmd="$3"
++
++    {
++        flock -s 9
++
++        # Prompt for password with plymouth, if installed and running.
++        if plymouth --ping 2>/dev/null; then
++            plymouth ask-for-password \
++                --prompt "$prompt" --number-of-tries="$tries" | \
++                eval "$cmd"
++            ret=$?
++        else
++            i=1
++            while [ "$i" -le "$tries" ]; do
++                printf "%s [%i/%i]:" "$prompt" "$i" "$tries" >&2
++                eval "$cmd" && ret=0 && break
++                ret=$?
++                i=$((i+1))
++                printf '\n' >&2
++            done
++            unset i
++        fi
++    } 9>/.console_lock
++
++    [ "$ret" -ne 0 ] && echo "Wrong password" >&2
++    return "$ret"
++}
++
++
+ # Delay until all required block devices are present.
+ modprobe zfs 2>/dev/null
+ udevadm settle
+@@ -45,31 +81,39 @@ fi
+ ZFS_DATASET="${ZFS_DATASET:-${root}}"
+ ZFS_POOL="${ZFS_DATASET%%/*}"
+ 
+-if import_pool "${ZFS_POOL}" ; then
+-	# Load keys if we can or if we need to
+-	if [ "$(zpool list -H -o feature@encryption "${ZFS_POOL}")" = 'active' ]; then
+-		# if the root dataset has encryption enabled
+-		ENCRYPTIONROOT="$(zfs get -H -o value encryptionroot "${ZFS_DATASET}")"
+-		if ! [ "${ENCRYPTIONROOT}" = "-" ]; then
+-			KEYSTATUS="$(zfs get -H -o value keystatus "${ENCRYPTIONROOT}")"
+-			# if the key needs to be loaded
+-			if [ "$KEYSTATUS" = "unavailable" ]; then
+-				# decrypt them
+-				ask_for_password \
+-					5 \
+-					"Encrypted ZFS password for ${ENCRYPTIONROOT}: " \
+-					"zfs load-key '${ENCRYPTIONROOT}'"
+-			fi
++
++if ! zpool get -Ho name "${ZFS_POOL}" > /dev/null 2>&1; then
++    info "ZFS: Importing pool ${ZFS_POOL}..."
++    # shellcheck disable=SC2086
++    if ! zpool import -N ${ZPOOL_IMPORT_OPTS} "${ZFS_POOL}"; then
++        warn "ZFS: Unable to import pool ${ZFS_POOL}"
++        rootok=0
++        return 1
++    fi
++fi
++
++# Load keys if we can or if we need to
++if [ "$(zpool get -Ho value feature@encryption "${ZFS_POOL}")" = 'active' ]; then
++	# if the root dataset has encryption enabled
++	ENCRYPTIONROOT="$(zfs get -Ho value encryptionroot "${ZFS_DATASET}")"
++	if ! [ "${ENCRYPTIONROOT}" = "-" ]; then
++		KEYSTATUS="$(zfs get -Ho value keystatus "${ENCRYPTIONROOT}")"
++		# if the key needs to be loaded
++		if [ "$KEYSTATUS" = "unavailable" ]; then
++			# decrypt them
++			ask_for_password \
++				5 \
++				"Encrypted ZFS password for ${ENCRYPTIONROOT}: " \
++				"zfs load-key '${ENCRYPTIONROOT}'"
+ 		fi
+ 	fi
+-	# Let us tell the initrd to run on shutdown.
+-	# We have a shutdown hook to run
+-	# because we imported the pool.
+-	info "ZFS: Mounting dataset ${ZFS_DATASET}..."
+-	if mount_dataset "${ZFS_DATASET}" ; then
+-		ROOTFS_MOUNTED=yes
+-		return 0
+-	fi
+ fi
+ 
+-rootok=0
++# Let us tell the initrd to run on shutdown.
++# We have a shutdown hook to run
++# because we imported the pool.
++info "ZFS: Mounting dataset ${ZFS_DATASET}..."
++if ! mount_dataset "${ZFS_DATASET}"; then
++  rootok=0
++  return 1
++fi
+diff --git a/contrib/dracut/90zfs/zfs-lib.sh.in b/contrib/dracut/90zfs/zfs-lib.sh.in
+index f456e05715..1bd5b27ac1 100755
+--- a/contrib/dracut/90zfs/zfs-lib.sh.in
++++ b/contrib/dracut/90zfs/zfs-lib.sh.in
+@@ -1,4 +1,5 @@
+ #!/bin/sh
++# shellcheck disable=SC2034
+ 
+ command -v getarg >/dev/null || . /lib/dracut-lib.sh || . /usr/lib/dracut/modules.d/99base/dracut-lib.sh
+ command -v getargbool >/dev/null || {
+@@ -16,34 +17,14 @@ command -v getargbool >/dev/null || {
+     }
+ }
+ 
+-OLDIFS="${IFS}"
+-NEWLINE="
+-"
+ TAB="	"
+ 
+-ZPOOL_IMPORT_OPTS=""
+-if getargbool 0 zfs_force -y zfs.force -y zfsforce ; then
++ZPOOL_IMPORT_OPTS=
++if getargbool 0 zfs_force -y zfs.force -y zfsforce; then
+     warn "ZFS: Will force-import pools if necessary."
+-    ZPOOL_IMPORT_OPTS="${ZPOOL_IMPORT_OPTS} -f"
++    ZPOOL_IMPORT_OPTS=-f
+ fi
+ 
+-# import_pool POOL
+-#   imports the given zfs pool if it isn't imported already.
+-import_pool() {
+-    pool="${1}"
+-
+-    if ! zpool list -H "${pool}" > /dev/null 2>&1; then
+-        info "ZFS: Importing pool ${pool}..."
+-        # shellcheck disable=SC2086
+-        if ! zpool import -N ${ZPOOL_IMPORT_OPTS} "${pool}" ; then
+-            warn "ZFS: Unable to import pool ${pool}"
+-            return 1
+-        fi
+-    fi
+-
+-    return 0
+-}
+-
+ _mount_dataset_cb() {
+     mount -o zfsutil -t zfs "${1}" "${NEWROOT}${2}"
+ }
+@@ -96,41 +77,6 @@ for_relevant_root_children() {
+         )
+ }
+ 
+-# ask_for_password tries prompt cmd
+-#
+-# Wraps around plymouth ask-for-password and adds fallback to tty password ask
+-# if plymouth is not present.
+-ask_for_password() {
+-    tries="$1"
+-    prompt="$2"
+-    cmd="$3"
+-
+-    {
+-        flock -s 9
+-
+-        # Prompt for password with plymouth, if installed and running.
+-        if plymouth --ping 2>/dev/null; then
+-            plymouth ask-for-password \
+-                --prompt "$prompt" --number-of-tries="$tries" | \
+-                eval "$cmd"
+-            ret=$?
+-        else
+-            i=1
+-            while [ "$i" -le "$tries" ]; do
+-                printf "%s [%i/%i]:" "$prompt" "$i" "$tries" >&2
+-                eval "$cmd" && ret=0 && break
+-                ret=$?
+-                i=$((i+1))
+-                printf '\n' >&2
+-            done
+-            unset i
+-        fi
+-    } 9>/.console_lock
+-
+-    [ $ret -ne 0 ] && echo "Wrong password" >&2
+-    return $ret
+-}
+-
+ # Parse root=, rootfstype=, return them decoded and normalised to zfs:AUTO for auto, plain dset for explicit
+ #
+ # True if ZFS-on-root, false if we shouldn't
+-- 
+2.32.0
+

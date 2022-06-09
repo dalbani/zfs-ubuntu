@@ -1,0 +1,34 @@
+From 090bda59e32f71bd6433bd90d21446a8b87d8971 Mon Sep 17 00:00:00 2001
+From: Ryan Moeller <ryan@iXsystems.com>
+Date: Wed, 25 May 2022 20:26:59 -0400
+Subject: [PATCH] Silence unused-but-set-variable warning
+
+This was breaking the kmod port build on FreeBSD with Clang 13.
+
+Use the same trick as we do for ASSERT() to make DNODE_VERIFY() use
+its parameter at compile time without actually using it at run time
+in non-debug builds.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Ryan Moeller <ryan@iXsystems.com>
+Closes #13507
+---
+ include/sys/dnode.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/sys/dnode.h b/include/sys/dnode.h
+index af8775b9ee..bae393eeba 100644
+--- a/include/sys/dnode.h
++++ b/include/sys/dnode.h
+@@ -616,7 +616,7 @@ _NOTE(CONSTCOND) } while (0)
+ #else
+ 
+ #define	dprintf_dnode(db, fmt, ...)
+-#define	DNODE_VERIFY(dn)
++#define	DNODE_VERIFY(dn)		((void) sizeof ((uintptr_t)(dn)))
+ #define	FREE_VERIFY(db, start, end, tx)
+ 
+ #endif
+-- 
+2.32.0
+

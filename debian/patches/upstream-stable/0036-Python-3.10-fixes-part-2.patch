@@ -1,0 +1,32 @@
+From ce8ae064d209240037ac41d5f99f55579c52690c Mon Sep 17 00:00:00 2001
+From: Rich Ercolani <214141+rincebrain@users.noreply.github.com>
+Date: Fri, 29 Oct 2021 18:36:01 -0400
+Subject: [PATCH] Python 3.10 fixes, part 2
+
+There was a fallback case I overlooked in the initial patch, with
+a similarly imperfect version extractor.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Rich Ercolani <rincebrain@gmail.com>
+Closes #12045
+Closes #12673
+---
+ config/ax_python_devel.m4 | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/config/ax_python_devel.m4 b/config/ax_python_devel.m4
+index fcf73dc208..7adcf01a04 100644
+--- a/config/ax_python_devel.m4
++++ b/config/ax_python_devel.m4
+@@ -224,7 +224,7 @@ EOD`
+ 				ac_python_version=$PYTHON_VERSION
+ 			else
+ 				ac_python_version=`$PYTHON -c "import sys; \
+-					print (sys.version[[:3]])"`
++					print ('.'.join(sys.version.split('.')[[:2]]))"`
+ 			fi
+ 		fi
+ 
+-- 
+2.32.0
+

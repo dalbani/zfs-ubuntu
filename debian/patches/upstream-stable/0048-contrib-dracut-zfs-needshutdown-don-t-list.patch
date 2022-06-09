@@ -1,0 +1,32 @@
+From 094709604419f2c0f347dae4ce28b1b50cd26463 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Tue, 5 Apr 2022 01:09:11 +0200
+Subject: [PATCH] contrib: dracut: zfs-needshutdown: don't list
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Upstream-commit: 1cc9cc2f89eb67722109bbb5a2d9814b5e77d5db
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #13291
+---
+ contrib/dracut/90zfs/zfs-needshutdown.sh.in | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/contrib/dracut/90zfs/zfs-needshutdown.sh.in b/contrib/dracut/90zfs/zfs-needshutdown.sh.in
+index dd6de30c27..7fb825bc95 100755
+--- a/contrib/dracut/90zfs/zfs-needshutdown.sh.in
++++ b/contrib/dracut/90zfs/zfs-needshutdown.sh.in
+@@ -2,7 +2,7 @@
+ 
+ command -v getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
+ 
+-if zpool list 2>&1 | grep -q 'no pools available' ; then
++if [ -z "$(zpool get -Ho value name)" ]; then
+     info "ZFS: No active pools, no need to export anything."
+ else
+     info "ZFS: There is an active pool, will export it."
+-- 
+2.32.0
+

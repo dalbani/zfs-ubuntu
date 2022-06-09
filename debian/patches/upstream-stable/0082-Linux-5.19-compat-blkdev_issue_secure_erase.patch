@@ -1,0 +1,157 @@
+From 7ae5ea8864d7a0cbf63feb61bd9022adc803b60d Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Fri, 27 May 2022 19:40:22 +0000
+Subject: [PATCH] Linux 5.19 compat: blkdev_issue_secure_erase()
+
+Linux 5.19 commit torvalds/linux@44abff2c0 splits the secure
+erase functionality from the blkdev_issue_discard() function.
+The blkdev_issue_secure_erase() must now be issued to issue
+a secure erase.
+
+Reviewed-by: Tony Hutter <hutter2@llnl.gov>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #13515
+---
+ config/kernel-blkdev.m4         | 53 +++++++++++++++++++++++++++++++++
+ module/os/linux/zfs/vdev_disk.c | 37 +++++++++++++++++------
+ 2 files changed, 81 insertions(+), 9 deletions(-)
+
+diff --git a/config/kernel-blkdev.m4 b/config/kernel-blkdev.m4
+index 9c60e5dd42..fb7b1a4586 100644
+--- a/config/kernel-blkdev.m4
++++ b/config/kernel-blkdev.m4
+@@ -294,6 +294,57 @@ AC_DEFUN([ZFS_AC_KERNEL_BLKDEV_BDEV_WHOLE], [
+ 	])
+ ])
+ 
++dnl #
++dnl # 5.19 API: blkdev_issue_secure_erase()
++dnl # 3.10 API: blkdev_issue_discard(..., BLKDEV_DISCARD_SECURE)
++dnl #
++AC_DEFUN([ZFS_AC_KERNEL_SRC_BLKDEV_ISSUE_SECURE_ERASE], [
++	ZFS_LINUX_TEST_SRC([blkdev_issue_secure_erase], [
++		#include <linux/blkdev.h>
++	],[
++		struct block_device *bdev = NULL;
++		sector_t sector = 0;
++		sector_t nr_sects = 0;
++		int error __attribute__ ((unused));
++
++		error = blkdev_issue_secure_erase(bdev,
++		    sector, nr_sects, GFP_KERNEL);
++	])
++
++	ZFS_LINUX_TEST_SRC([blkdev_issue_discard_flags], [
++		#include <linux/blkdev.h>
++	],[
++		struct block_device *bdev = NULL;
++		sector_t sector = 0;
++		sector_t nr_sects = 0;
++		unsigned long flags = 0;
++		int error __attribute__ ((unused));
++
++		error = blkdev_issue_discard(bdev,
++		    sector, nr_sects, GFP_KERNEL, flags);
++	])
++])
++
++AC_DEFUN([ZFS_AC_KERNEL_BLKDEV_ISSUE_SECURE_ERASE], [
++	AC_MSG_CHECKING([whether blkdev_issue_secure_erase() is available])
++	ZFS_LINUX_TEST_RESULT([blkdev_issue_secure_erase], [
++		AC_MSG_RESULT(yes)
++		AC_DEFINE(HAVE_BLKDEV_ISSUE_SECURE_ERASE, 1,
++		    [blkdev_issue_secure_erase() is available])
++	],[
++		AC_MSG_RESULT(no)
++
++		AC_MSG_CHECKING([whether blkdev_issue_discard() is available])
++		ZFS_LINUX_TEST_RESULT([blkdev_issue_discard_flags], [
++			AC_MSG_RESULT(yes)
++			AC_DEFINE(HAVE_BLKDEV_ISSUE_DISCARD, 1,
++			    [blkdev_issue_discard() is available])
++		],[
++			ZFS_LINUX_TEST_ERROR([blkdev_issue_discard()])
++		])
++	])
++])
++
+ dnl #
+ dnl # 5.13 API change
+ dnl # blkdev_get_by_path() no longer handles ERESTARTSYS
+@@ -326,6 +377,7 @@ AC_DEFUN([ZFS_AC_KERNEL_SRC_BLKDEV], [
+ 	ZFS_AC_KERNEL_SRC_BLKDEV_CHECK_DISK_CHANGE
+ 	ZFS_AC_KERNEL_SRC_BLKDEV_BDEV_CHECK_MEDIA_CHANGE
+ 	ZFS_AC_KERNEL_SRC_BLKDEV_BDEV_WHOLE
++	ZFS_AC_KERNEL_SRC_BLKDEV_ISSUE_SECURE_ERASE
+ ])
+ 
+ AC_DEFUN([ZFS_AC_KERNEL_BLKDEV], [
+@@ -340,4 +392,5 @@ AC_DEFUN([ZFS_AC_KERNEL_BLKDEV], [
+ 	ZFS_AC_KERNEL_BLKDEV_BDEV_CHECK_MEDIA_CHANGE
+ 	ZFS_AC_KERNEL_BLKDEV_BDEV_WHOLE
+ 	ZFS_AC_KERNEL_BLKDEV_GET_ERESTARTSYS
++	ZFS_AC_KERNEL_BLKDEV_ISSUE_SECURE_ERASE
+ ])
+diff --git a/module/os/linux/zfs/vdev_disk.c b/module/os/linux/zfs/vdev_disk.c
+index 950da87f3d..97cd90bf0a 100644
+--- a/module/os/linux/zfs/vdev_disk.c
++++ b/module/os/linux/zfs/vdev_disk.c
+@@ -749,12 +749,38 @@ vdev_disk_io_flush(struct block_device *bdev, zio_t *zio)
+ 	return (0);
+ }
+ 
++static int
++vdev_disk_io_trim(zio_t *zio)
++{
++	vdev_t *v = zio->io_vd;
++	vdev_disk_t *vd = v->vdev_tsd;
++
++#if defined(HAVE_BLKDEV_ISSUE_SECURE_ERASE)
++	if (zio->io_trim_flags & ZIO_TRIM_SECURE) {
++		return (-blkdev_issue_secure_erase(vd->vd_bdev,
++		    zio->io_offset >> 9, zio->io_size >> 9, GFP_NOFS));
++	} else {
++		return (-blkdev_issue_discard(vd->vd_bdev,
++		    zio->io_offset >> 9, zio->io_size >> 9, GFP_NOFS));
++	}
++#elif defined(HAVE_BLKDEV_ISSUE_DISCARD)
++	unsigned long trim_flags = 0;
++#if defined(BLKDEV_DISCARD_SECURE)
++	if (zio->io_trim_flags & ZIO_TRIM_SECURE)
++		trim_flags |= BLKDEV_DISCARD_SECURE;
++#endif
++	return (-blkdev_issue_discard(vd->vd_bdev,
++	    zio->io_offset >> 9, zio->io_size >> 9, GFP_NOFS, trim_flags));
++#else
++#error "Unsupported kernel"
++#endif
++}
++
+ static void
+ vdev_disk_io_start(zio_t *zio)
+ {
+ 	vdev_t *v = zio->io_vd;
+ 	vdev_disk_t *vd = v->vdev_tsd;
+-	unsigned long trim_flags = 0;
+ 	int rw, error;
+ 
+ 	/*
+@@ -827,14 +853,7 @@ vdev_disk_io_start(zio_t *zio)
+ 		break;
+ 
+ 	case ZIO_TYPE_TRIM:
+-#if defined(BLKDEV_DISCARD_SECURE)
+-		if (zio->io_trim_flags & ZIO_TRIM_SECURE)
+-			trim_flags |= BLKDEV_DISCARD_SECURE;
+-#endif
+-		zio->io_error = -blkdev_issue_discard(vd->vd_bdev,
+-		    zio->io_offset >> 9, zio->io_size >> 9, GFP_NOFS,
+-		    trim_flags);
+-
++		zio->io_error = vdev_disk_io_trim(zio);
+ 		rw_exit(&vd->vd_lock);
+ 		zio_interrupt(zio);
+ 		return;
+-- 
+2.32.0
+

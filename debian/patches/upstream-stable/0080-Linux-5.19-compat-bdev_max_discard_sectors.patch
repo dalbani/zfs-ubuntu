@@ -1,0 +1,155 @@
+From 9ce5eb18efba19c615e82836fdd9fa77079087d4 Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Fri, 27 May 2022 17:51:55 +0000
+Subject: [PATCH] Linux 5.19 compat: bdev_max_discard_sectors()
+
+Linux 5.19 commit torvalds/linux@70200574cc removed the
+blk_queue_discard() helper function.  The preferred interface
+is to now use the bdev_max_discard_sectors() function to check
+for discard support.
+
+Reviewed-by: Tony Hutter <hutter2@llnl.gov>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #13515
+---
+ config/kernel-blk-queue.m4                    | 32 ++++++++++++++++---
+ config/kernel-vfs-iov_iter.m4                 |  2 ++
+ include/os/linux/kernel/linux/blkdev_compat.h | 19 +++++++++++
+ module/os/linux/zfs/vdev_disk.c               |  2 +-
+ module/os/linux/zfs/zvol_os.c                 |  2 ++
+ 5 files changed, 51 insertions(+), 6 deletions(-)
+
+diff --git a/config/kernel-blk-queue.m4 b/config/kernel-blk-queue.m4
+index 091952f570..b389917838 100644
+--- a/config/kernel-blk-queue.m4
++++ b/config/kernel-blk-queue.m4
+@@ -74,6 +74,8 @@ AC_DEFUN([ZFS_AC_KERNEL_BLK_QUEUE_UPDATE_READAHEAD], [
+ 		AC_DEFINE(HAVE_BLK_QUEUE_UPDATE_READAHEAD, 1,
+ 		    [blk_queue_update_readahead() exists])
+ 	],[
++		AC_MSG_RESULT(no)
++
+ 		AC_MSG_CHECKING([whether disk_update_readahead() exists])
+ 		ZFS_LINUX_TEST_RESULT([disk_update_readahead], [
+ 			AC_MSG_RESULT(yes)
+@@ -86,10 +88,19 @@ AC_DEFUN([ZFS_AC_KERNEL_BLK_QUEUE_UPDATE_READAHEAD], [
+ ])
+ 
+ dnl #
+-dnl # 2.6.32 API,
+-dnl #   blk_queue_discard()
++dnl # 5.19: bdev_max_discard_sectors() available
++dnl # 2.6.32: blk_queue_discard() available
+ dnl #
+ AC_DEFUN([ZFS_AC_KERNEL_SRC_BLK_QUEUE_DISCARD], [
++	ZFS_LINUX_TEST_SRC([bdev_max_discard_sectors], [
++		#include <linux/blkdev.h>
++	],[
++		struct block_device *bdev __attribute__ ((unused)) = NULL;
++		unsigned int error __attribute__ ((unused));
++
++		error = bdev_max_discard_sectors(bdev);
++	])
++
+ 	ZFS_LINUX_TEST_SRC([blk_queue_discard], [
+ 		#include <linux/blkdev.h>
+ 	],[
+@@ -102,11 +113,22 @@ AC_DEFUN([ZFS_AC_KERNEL_SRC_BLK_QUEUE_DISCARD], [
+ ])
+ 
+ AC_DEFUN([ZFS_AC_KERNEL_BLK_QUEUE_DISCARD], [
+-	AC_MSG_CHECKING([whether blk_queue_discard() is available])
+-	ZFS_LINUX_TEST_RESULT([blk_queue_discard], [
++	AC_MSG_CHECKING([whether bdev_max_discard_sectors() is available])
++	ZFS_LINUX_TEST_RESULT([bdev_max_discard_sectors], [
+ 		AC_MSG_RESULT(yes)
++		AC_DEFINE(HAVE_BDEV_MAX_DISCARD_SECTORS, 1,
++		    [bdev_max_discard_sectors() is available])
+ 	],[
+-		ZFS_LINUX_TEST_ERROR([blk_queue_discard])
++		AC_MSG_RESULT(no)
++
++		AC_MSG_CHECKING([whether blk_queue_discard() is available])
++		ZFS_LINUX_TEST_RESULT([blk_queue_discard], [
++			AC_MSG_RESULT(yes)
++			AC_DEFINE(HAVE_BLK_QUEUE_DISCARD, 1,
++			    [blk_queue_discard() is available])
++		],[
++			ZFS_LINUX_TEST_ERROR([blk_queue_discard])
++		])
+ 	])
+ ])
+ 
+diff --git a/config/kernel-vfs-iov_iter.m4 b/config/kernel-vfs-iov_iter.m4
+index 57f78745a2..e0617faab0 100644
+--- a/config/kernel-vfs-iov_iter.m4
++++ b/config/kernel-vfs-iov_iter.m4
+@@ -134,6 +134,8 @@ AC_DEFUN([ZFS_AC_KERNEL_VFS_IOV_ITER], [
+ 		AC_DEFINE(HAVE_IOV_ITER_FAULT_IN_READABLE, 1,
+ 		    [iov_iter_fault_in_readable() is available])
+ 	],[
++		AC_MSG_RESULT(no)
++
+ 		AC_MSG_CHECKING([whether fault_in_iov_iter_readable() is available])
+ 		ZFS_LINUX_TEST_RESULT([fault_in_iov_iter_readable], [
+ 			AC_MSG_RESULT(yes)
+diff --git a/include/os/linux/kernel/linux/blkdev_compat.h b/include/os/linux/kernel/linux/blkdev_compat.h
+index 9fa8884bb7..084d48c876 100644
+--- a/include/os/linux/kernel/linux/blkdev_compat.h
++++ b/include/os/linux/kernel/linux/blkdev_compat.h
+@@ -494,6 +494,25 @@ blk_queue_discard_granularity(struct request_queue *q, unsigned int dg)
+ 	q->limits.discard_granularity = dg;
+ }
+ 
++/*
++ * 5.19 API,
++ *   bdev_max_discard_sectors()
++ *
++ * 2.6.32 API,
++ *   blk_queue_discard()
++ */
++static inline boolean_t
++bdev_discard_supported(struct block_device *bdev)
++{
++#if defined(HAVE_BDEV_MAX_DISCARD_SECTORS)
++	return (!!bdev_max_discard_sectors(bdev));
++#elif defined(HAVE_BLK_QUEUE_DISCARD)
++	return (!!blk_queue_discard(bdev_get_queue(bdev)));
++#else
++#error "Unsupported kernel"
++#endif
++}
++
+ /*
+  * 4.8 API,
+  *   blk_queue_secure_erase()
+diff --git a/module/os/linux/zfs/vdev_disk.c b/module/os/linux/zfs/vdev_disk.c
+index d6f9311be7..ed933656d2 100644
+--- a/module/os/linux/zfs/vdev_disk.c
++++ b/module/os/linux/zfs/vdev_disk.c
+@@ -316,7 +316,7 @@ vdev_disk_open(vdev_t *v, uint64_t *psize, uint64_t *max_psize,
+ 	v->vdev_nowritecache = B_FALSE;
+ 
+ 	/* Set when device reports it supports TRIM. */
+-	v->vdev_has_trim = !!blk_queue_discard(q);
++	v->vdev_has_trim = bdev_discard_supported(vd->vd_bdev);
+ 
+ 	/* Set when device reports it supports secure TRIM. */
+ 	v->vdev_has_securetrim = !!blk_queue_discard_secure(q);
+diff --git a/module/os/linux/zfs/zvol_os.c b/module/os/linux/zfs/zvol_os.c
+index 5c509a06a4..bb92c65ca8 100644
+--- a/module/os/linux/zfs/zvol_os.c
++++ b/module/os/linux/zfs/zvol_os.c
+@@ -1050,7 +1050,9 @@ zvol_os_create_minor(const char *name)
+ 	    (zvol_max_discard_blocks * zv->zv_volblocksize) >> 9);
+ 	blk_queue_discard_granularity(zv->zv_zso->zvo_queue,
+ 	    zv->zv_volblocksize);
++#ifdef QUEUE_FLAG_DISCARD
+ 	blk_queue_flag_set(QUEUE_FLAG_DISCARD, zv->zv_zso->zvo_queue);
++#endif
+ #ifdef QUEUE_FLAG_NONROT
+ 	blk_queue_flag_set(QUEUE_FLAG_NONROT, zv->zv_zso->zvo_queue);
+ #endif
+-- 
+2.32.0
+

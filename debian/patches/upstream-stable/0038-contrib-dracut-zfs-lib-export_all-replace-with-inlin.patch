@@ -1,0 +1,85 @@
+From 0657247548d642a3bb07ba053884059e7c00ca64 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Sat, 12 Feb 2022 14:08:02 +0100
+Subject: [PATCH] contrib/dracut: zfs-lib: export_all: replace with inline
+ zpool export -a
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+07a3312f170ac56cb480b0df9fdf4c83f116b59b, which introduced this in
+October of 2014, didn't have zpool export -a available; we do
+
+Upstream-commit: 6a41310c7099ca4532f2d8134bba37261f72410e
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #13093
+---
+ contrib/dracut/90zfs/export-zfs.sh.in |  4 +---
+ contrib/dracut/90zfs/mount-zfs.sh.in  |  2 +-
+ contrib/dracut/90zfs/zfs-lib.sh.in    | 16 ----------------
+ 3 files changed, 2 insertions(+), 20 deletions(-)
+
+diff --git a/contrib/dracut/90zfs/export-zfs.sh.in b/contrib/dracut/90zfs/export-zfs.sh.in
+index 8926503834..9e05ee03a3 100755
+--- a/contrib/dracut/90zfs/export-zfs.sh.in
++++ b/contrib/dracut/90zfs/export-zfs.sh.in
+@@ -1,14 +1,12 @@
+ #!/bin/sh
+ 
+-. /lib/dracut-zfs-lib.sh
+-
+ _do_zpool_export() {
+ 	ret=0
+ 	errs=""
+ 	final="${1}"
+ 
+ 	info "ZFS: Exporting ZFS storage pools..."
+-	errs=$(export_all -F 2>&1)
++	errs=$(zpool export -aF 2>&1)
+ 	ret=$?
+ 	[ -z "${errs}" ] || echo "${errs}" | vwarn
+ 	if [ "x${ret}" != "x0" ]; then
+diff --git a/contrib/dracut/90zfs/mount-zfs.sh.in b/contrib/dracut/90zfs/mount-zfs.sh.in
+index 68e3f0e0d6..7e11c9afda 100755
+--- a/contrib/dracut/90zfs/mount-zfs.sh.in
++++ b/contrib/dracut/90zfs/mount-zfs.sh.in
+@@ -44,7 +44,7 @@ if [ "${root}" = "zfs:AUTO" ] ; then
+ 		zpool import -N -a ${ZPOOL_IMPORT_OPTS}
+ 		if ! ZFS_DATASET="$(find_bootfs)" ; then
+ 			warn "ZFS: No bootfs attribute found in importable pools."
+-			export_all -F
++			zpool export -aF
+ 
+ 			rootok=0
+ 			return 1
+diff --git a/contrib/dracut/90zfs/zfs-lib.sh.in b/contrib/dracut/90zfs/zfs-lib.sh.in
+index defc0bfc8e..bca51c10c4 100755
+--- a/contrib/dracut/90zfs/zfs-lib.sh.in
++++ b/contrib/dracut/90zfs/zfs-lib.sh.in
+@@ -121,22 +121,6 @@ for_relevant_root_children() {
+         )
+ }
+ 
+-# export_all OPTS
+-#   exports all imported zfs pools.
+-export_all() {
+-    ret=0
+-
+-    IFS="${NEWLINE}"
+-    for pool in $(zpool list -H -o name) ; do
+-        if zpool list -H "${pool}" > /dev/null 2>&1; then
+-            zpool export "${pool}" "$@" || ret=$?
+-        fi
+-    done
+-    IFS="${OLDIFS}"
+-
+-    return ${ret}
+-}
+-
+ # ask_for_password
+ #
+ # Wraps around plymouth ask-for-password and adds fallback to tty password ask
+-- 
+2.32.0
+

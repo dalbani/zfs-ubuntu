@@ -1,0 +1,115 @@
+From fec407fb69b77b567775e214a08c74e4ba9a3d42 Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Fri, 27 May 2022 20:44:43 +0000
+Subject: [PATCH] Linux 5.19 compat: aops->read_folio()
+
+As of the Linux 5.19 kernel the readpage() address space operation
+has been replaced by read_folio().
+
+Reviewed-by: Tony Hutter <hutter2@llnl.gov>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #13515
+---
+ config/kernel-vfs-read_folio.m4 | 32 ++++++++++++++++++++++++++++++++
+ config/kernel.m4                |  2 ++
+ module/os/linux/zfs/zpl_file.c  | 12 ++++++++++++
+ 3 files changed, 46 insertions(+)
+ create mode 100644 config/kernel-vfs-read_folio.m4
+
+diff --git a/config/kernel-vfs-read_folio.m4 b/config/kernel-vfs-read_folio.m4
+new file mode 100644
+index 0000000000..234d1212ab
+--- /dev/null
++++ b/config/kernel-vfs-read_folio.m4
+@@ -0,0 +1,32 @@
++dnl #
++dnl # Linux 5.19 uses read_folio in lieu of readpage
++dnl #
++AC_DEFUN([ZFS_AC_KERNEL_SRC_VFS_READ_FOLIO], [
++	ZFS_LINUX_TEST_SRC([vfs_has_read_folio], [
++		#include <linux/fs.h>
++
++		static int
++		test_read_folio(struct file *file, struct folio *folio) {
++			(void) file; (void) folio;
++			return (0);
++		}
++
++		static const struct address_space_operations
++		    aops __attribute__ ((unused)) = {
++			.read_folio	= test_read_folio,
++		};
++	],[])
++])
++
++AC_DEFUN([ZFS_AC_KERNEL_VFS_READ_FOLIO], [
++	dnl #
++	dnl # Linux 5.19 uses read_folio in lieu of readpage
++	dnl #
++	AC_MSG_CHECKING([read_folio exists])
++	ZFS_LINUX_TEST_RESULT([vfs_has_read_folio], [
++		AC_MSG_RESULT([yes])
++		AC_DEFINE(HAVE_VFS_READ_FOLIO, 1, [read_folio exists])
++	],[
++		AC_MSG_RESULT([no])
++	])
++])
+diff --git a/config/kernel.m4 b/config/kernel.m4
+index 25df16a90e..2cb7ff900e 100644
+--- a/config/kernel.m4
++++ b/config/kernel.m4
+@@ -101,6 +101,7 @@ AC_DEFUN([ZFS_AC_KERNEL_TEST_SRC], [
+ 	ZFS_AC_KERNEL_SRC_SGET
+ 	ZFS_AC_KERNEL_SRC_LSEEK_EXECUTE
+ 	ZFS_AC_KERNEL_SRC_VFS_FILEMAP_DIRTY_FOLIO
++	ZFS_AC_KERNEL_SRC_VFS_READ_FOLIO
+ 	ZFS_AC_KERNEL_SRC_VFS_GETATTR
+ 	ZFS_AC_KERNEL_SRC_VFS_FSYNC_2ARGS
+ 	ZFS_AC_KERNEL_SRC_VFS_ITERATE
+@@ -217,6 +218,7 @@ AC_DEFUN([ZFS_AC_KERNEL_TEST_RESULT], [
+ 	ZFS_AC_KERNEL_SGET
+ 	ZFS_AC_KERNEL_LSEEK_EXECUTE
+ 	ZFS_AC_KERNEL_VFS_FILEMAP_DIRTY_FOLIO
++	ZFS_AC_KERNEL_VFS_READ_FOLIO
+ 	ZFS_AC_KERNEL_VFS_GETATTR
+ 	ZFS_AC_KERNEL_VFS_FSYNC_2ARGS
+ 	ZFS_AC_KERNEL_VFS_ITERATE
+diff --git a/module/os/linux/zfs/zpl_file.c b/module/os/linux/zfs/zpl_file.c
+index 626e7f79d2..38d2bd1470 100644
+--- a/module/os/linux/zfs/zpl_file.c
++++ b/module/os/linux/zfs/zpl_file.c
+@@ -635,11 +635,19 @@ zpl_readpage_common(struct page *pp)
+ 	return (error);
+ }
+ 
++#ifdef HAVE_VFS_READ_FOLIO
++static int
++zpl_read_folio(struct file *filp, struct folio *folio)
++{
++	return (zpl_readpage_common(&folio->page));
++}
++#else
+ static int
+ zpl_readpage(struct file *filp, struct page *pp)
+ {
+ 	return (zpl_readpage_common(pp));
+ }
++#endif
+ 
+ static int
+ zpl_readpage_filler(void *data, struct page *pp)
+@@ -1057,7 +1065,11 @@ const struct address_space_operations zpl_address_space_operations = {
+ #else
+ 	.readahead	= zpl_readahead,
+ #endif
++#ifdef HAVE_VFS_READ_FOLIO
++	.read_folio	= zpl_read_folio,
++#else
+ 	.readpage	= zpl_readpage,
++#endif
+ 	.writepage	= zpl_writepage,
+ 	.writepages	= zpl_writepages,
+ 	.direct_IO	= zpl_direct_IO,
+-- 
+2.32.0
+

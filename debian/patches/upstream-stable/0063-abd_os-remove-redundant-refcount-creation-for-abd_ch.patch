@@ -1,0 +1,35 @@
+From b28c0c4bf8ca6edc6c5e23e4be7ea5999fa1ae15 Mon Sep 17 00:00:00 2001
+From: hping <huangping@smartx.com>
+Date: Tue, 10 May 2022 07:30:16 +0800
+Subject: [PATCH] abd_os: remove redundant refcount creation for abd_children
+
+Refcount creation for abd_zero_scatter->abd_children is redundant in
+abd_alloc_zero_scatter, as it has been done in abd_init_struct.
+
+In addition, abd_children is undefined when ZFS_DEBUG is disabled, the
+reference of abd_children in abd_alloc_zero_scatter breaks build of
+libzpool when ZFS_DEBUG is disabled.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Reviewed-by: Brian Atkinson <batkinson@lanl.gov>
+Signed-off-by: Ping Huang <huangping@smartx.com>
+Closes #13429
+---
+ module/os/linux/zfs/abd_os.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/module/os/linux/zfs/abd_os.c b/module/os/linux/zfs/abd_os.c
+index f7ebe4e096..8afa222dea 100644
+--- a/module/os/linux/zfs/abd_os.c
++++ b/module/os/linux/zfs/abd_os.c
+@@ -619,7 +619,6 @@ abd_alloc_zero_scatter(void)
+ 	ABD_SCATTER(abd_zero_scatter).abd_offset = 0;
+ 	ABD_SCATTER(abd_zero_scatter).abd_nents = nr_pages;
+ 	abd_zero_scatter->abd_size = SPA_MAXBLOCKSIZE;
+-	zfs_refcount_create(&abd_zero_scatter->abd_children);
+ 	ABD_SCATTER(abd_zero_scatter).abd_sgl = vmem_alloc(nr_pages *
+ 	    sizeof (struct scatterlist), KM_SLEEP);
+ 
+-- 
+2.32.0
+
