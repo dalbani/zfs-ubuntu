@@ -39,9 +39,9 @@ list_zvols() {
 	    name,volmode,receive_resume_token,redact_snaps,keystatus |
 	    while IFS="	" read -r name volmode token redacted keystatus; do # IFS=\t here!
 
-		# /dev links are not created for zvols with volmode = "none"
-                # redacted zvols, or encrypted zvols for which the key has not
-                # been loaded.
+		# /dev links are not created for zvols with volmode = "none",
+		# redacted zvols, or encrypted zvols for which the key has not
+		# been loaded.
 		[ "$volmode" = "none" ] && continue
 		[ "$volmode" = "default" ] && [ "$default_volmode" = "3" ] &&
 		    continue
