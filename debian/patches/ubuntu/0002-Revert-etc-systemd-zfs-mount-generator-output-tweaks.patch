@@ -1,7 +1,7 @@
-From b2fc7357863095f306f3a03eef460158158f7875 Mon Sep 17 00:00:00 2001
+From 83fbd45b461f5ddec2eedfe96ea4375452637406 Mon Sep 17 00:00:00 2001
 From: Dimitri John Ledkov <dimitri.ledkov@canonical.com>
 Date: Mon, 17 Jan 2022 13:57:28 +0000
-Subject: [PATCH 1/2] Revert "etc/systemd/zfs-mount-generator: output tweaks"
+Subject: [PATCH 2/3] Revert "etc/systemd/zfs-mount-generator: output tweaks"
 
 This reverts commit ec3b25825e64f37f74605c451cfc026c28920715.
 

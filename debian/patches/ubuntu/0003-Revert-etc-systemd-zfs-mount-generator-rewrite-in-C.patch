@@ -1,7 +1,7 @@
-From 474ddc9fa5440312e5224f394052264ef7644b00 Mon Sep 17 00:00:00 2001
+From 7b5a6894d4b083e89c217244aee53e35aa8e4936 Mon Sep 17 00:00:00 2001
 From: Dimitri John Ledkov <dimitri.ledkov@canonical.com>
 Date: Mon, 17 Jan 2022 14:00:42 +0000
-Subject: [PATCH 2/2] Revert "etc/systemd/zfs-mount-generator: rewrite in C"
+Subject: [PATCH 3/3] Revert "etc/systemd/zfs-mount-generator: rewrite in C"
 
 This reverts commit 0382362ce06a5514a97bbbf11dfe55e7e408898a.
 
