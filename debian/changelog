@@ -1,3 +1,13 @@
+zfs-linux (2.1.5-1ubuntu2) kinetic; urgency=medium
+
+  * Bump zzstd.ko module version number. All modules are going to be
+    merged into one upstream soon. At the moment all other modules
+    increase with every build, but zzstd one. Append zfs package version
+    to zzstd module version number, to make dkms module versions higher
+    than kernel prebuilt ones.
+
+ -- Dimitri John Ledkov <dimitri.ledkov@canonical.com>  Thu, 21 Jul 2022 12:00:54 +0100
+
 zfs-linux (2.1.5-1ubuntu1) kinetic; urgency=medium
 
   * Merge from Debian Unstable, remaining changes:
