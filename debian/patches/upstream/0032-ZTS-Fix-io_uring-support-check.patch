@@ -1,0 +1,35 @@
+From 98315be03600dee78f5c844ed4ef422098493a24 Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Tue, 26 Jul 2022 14:39:23 -0700
+Subject: [PATCH] ZTS: Fix io_uring support check
+
+Not all Linux distribution kernels enable io_uring support by
+default.  Update the run time check to verify that the booted
+kernel was built with CONFIG_IO_URING=y.
+
+Reviewed-by: Tony Hutter <hutter2@llnl.gov>
+Reviewed-by: Tony Nguyen <tony.nguyen@delphix.com>
+Co-authored-by: George Melikov <mail@gmelikov.ru>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #13648
+Closes #13685
+---
+ tests/zfs-tests/tests/functional/io/io_uring.ksh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/zfs-tests/tests/functional/io/io_uring.ksh b/tests/zfs-tests/tests/functional/io/io_uring.ksh
+index 2d2b18f8bb..189c11f0d6 100755
+--- a/tests/zfs-tests/tests/functional/io/io_uring.ksh
++++ b/tests/zfs-tests/tests/functional/io/io_uring.ksh
+@@ -40,7 +40,7 @@
+ verify_runnable "global"
+ 
+ 
+-if [[ $(linux_version) -lt $(linux_version "5.1") ]]; then
++if ! $(grep -q "CONFIG_IO_URING=y" /boot/config-$(uname -r)); then
+ 	log_unsupported "Requires io_uring support"
+ fi
+ 
+-- 
+2.34.1
+

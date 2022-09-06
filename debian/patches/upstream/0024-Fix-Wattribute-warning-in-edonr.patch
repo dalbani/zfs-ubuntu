@@ -1,0 +1,45 @@
+From c771583f238f74588cfed1c7ecb07cf704905958 Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Mon, 20 Jun 2022 19:37:38 +0000
+Subject: [PATCH] Fix -Wattribute-warning in edonr
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The wrong union memory was being accessed in EdonRInit resulting in
+a write beyond size of field compiler warning.  Reference the correct
+member to resolve the warning.  The warning was correct and this in
+case the mistake was harmless.
+
+    In function ‘fortify_memcpy_chk’,
+    inlined from ‘EdonRInit’ at zfs/module/icp/algs/edonr/edonr.c:494:3:
+    ./include/linux/fortify-string.h:344:25: error: call to
+    ‘__write_overflow_field’ declared with attribute warning:
+    detected write beyond size of field (1st parameter);
+    maybe use struct_group()? [-Werror=attribute-warning]
+
+Reviewed-by: Ryan Moeller <ryan@iXsystems.com>
+Reviewed-by: Alexander Motin <mav@FreeBSD.org>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #13528
+Closes #13575
+---
+ module/icp/algs/edonr/edonr.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/module/icp/algs/edonr/edonr.c b/module/icp/algs/edonr/edonr.c
+index ee96e692ef..7a3ba30c05 100644
+--- a/module/icp/algs/edonr/edonr.c
++++ b/module/icp/algs/edonr/edonr.c
+@@ -488,7 +488,7 @@ EdonRInit(EdonRState *state, size_t hashbitlen)
+ 		state->hashbitlen = 512;
+ 		state->bits_processed = 0;
+ 		state->unprocessed_bits = 0;
+-		bcopy(i512p2, hashState224(state)->DoublePipe,
++		bcopy(i512p2, hashState512(state)->DoublePipe,
+ 		    16 * sizeof (uint64_t));
+ 		break;
+ 	}
+-- 
+2.34.1
+

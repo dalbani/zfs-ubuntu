@@ -1,0 +1,44 @@
+From bbb50e61296795dbc51eccc622aee7056f343983 Mon Sep 17 00:00:00 2001
+From: Alexander Motin <mav@FreeBSD.org>
+Date: Tue, 5 Jul 2022 19:27:29 -0400
+Subject: [PATCH] Avoid memory copy when verifying raidz/draid parity
+
+Before this change for every valid parity column raidz_parity_verify()
+allocated new buffer and copied there existing data, then recalculated
+the parity and compared the result with the copy.  This patch removes
+the memory copy, simply swapping original buffer pointers with newly
+allocated empty ones for parity recalculation and comparison. Original
+buffers with potentially incorrect parity data are then just freed,
+while new recalculated ones are used for repair.
+
+On a pool of 12 4-wide raidz vdevs, storing 1.5TB of 16MB blocks, this
+change reduces memory traffic during scrub by 17% and total unhalted
+CPU time by 25%.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Alexander Motin <mav@FreeBSD.org>
+Sponsored-By: iXsystems, Inc.
+Closes #13613
+---
+ module/zfs/vdev_raidz.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/module/zfs/vdev_raidz.c b/module/zfs/vdev_raidz.c
+index 888f9de572..424de0b33e 100644
+--- a/module/zfs/vdev_raidz.c
++++ b/module/zfs/vdev_raidz.c
+@@ -1721,8 +1721,9 @@ raidz_parity_verify(zio_t *zio, raidz_row_t *rr)
+ 		if (!rc->rc_tried || rc->rc_error != 0)
+ 			continue;
+ 
+-		orig[c] = abd_alloc_sametype(rc->rc_abd, rc->rc_size);
+-		abd_copy(orig[c], rc->rc_abd, rc->rc_size);
++		orig[c] = rc->rc_abd;
++		ASSERT3U(abd_get_size(rc->rc_abd), ==, rc->rc_size);
++		rc->rc_abd = abd_alloc_linear(rc->rc_size, B_FALSE);
+ 	}
+ 
+ 	/*
+-- 
+2.34.1
+

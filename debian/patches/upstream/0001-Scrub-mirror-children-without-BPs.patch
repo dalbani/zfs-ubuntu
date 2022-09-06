@@ -1,0 +1,491 @@
+From 3920d7f3250007f7591c34060c0afbba6f5f174a Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Thu, 14 Jul 2022 10:21:29 -0700
+Subject: [PATCH] Scrub mirror children without BPs
+
+When scrubbing a raidz/draid pool, which contains a replacing or
+sparing mirror with multiple online children, only one child will
+be read.  This is not normally a serious concern because the DTL
+records are used to determine where a good copy of the data is.
+As long as the data can be read from one child the mirror vdev
+will use it to repair gaps in any of its children.  Furthermore,
+even if the data which was read is corrupt the raidz code will
+detect this and issue its own repair I/O to correct the damage
+in the mirror vdev.
+
+However, in the scenario where the DTL is wrong due to silent
+data corruption (say due to overwriting one child) and the scrub
+happens to read from a child with good data, then the other damaged
+mirror child will not be detected nor repaired.
+
+While this is possible for both raidz and draid vdevs, it's most
+pronounced when using draid.  This is because by default the zed
+will sequentially rebuild a draid pool to a distributed spare,
+and the distributed spare half of the mirror is always preferred
+since it delivers better performance.  This means the damaged
+half of the mirror will go undetected even after scrubbing.
+
+For system administrations this behavior is non-intuitive and in
+a worst case scenario could result in the only good copy of the
+data being unknowingly detached from the mirror.
+
+This change resolves the issue by reading all replacing/sparing
+mirror children when scrubbing.  When the BP isn't available for
+verification, then compare the data buffers from each child.  They
+must all be identical, if not there's silent damage and an error
+is returned to prompt the top-level vdev to issue a repair I/O to
+rewrite the data on all of the mirror children.  Since we can't
+tell which child was wrong a checksum error is logged against the
+replacing or sparing mirror vdev.
+
+Reviewed-by: Mark Maybee <mark.maybee@delphix.com>
+Reviewed-by: Tony Hutter <hutter2@llnl.gov>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #13555
+---
+ module/zfs/vdev_mirror.c                      |  84 ++++++++--
+ module/zfs/vdev_raidz.c                       |  18 +-
+ tests/runfiles/common.run                     |   3 +-
+ tests/test-runner/bin/zts-report.py.in        |   2 -
+ .../tests/functional/redundancy/Makefile.am   |   3 +-
+ ...aged.ksh => redundancy_draid_damaged1.ksh} |  17 +-
+ .../redundancy/redundancy_draid_damaged2.ksh  | 157 ++++++++++++++++++
+ 7 files changed, 251 insertions(+), 33 deletions(-)
+ rename tests/zfs-tests/tests/functional/redundancy/{redundancy_draid_damaged.ksh => redundancy_draid_damaged1.ksh} (86%)
+ create mode 100755 tests/zfs-tests/tests/functional/redundancy/redundancy_draid_damaged2.ksh
+
+diff --git a/module/zfs/vdev_mirror.c b/module/zfs/vdev_mirror.c
+index 45b744b2ec..9778506982 100644
+--- a/module/zfs/vdev_mirror.c
++++ b/module/zfs/vdev_mirror.c
+@@ -35,6 +35,7 @@
+ #include <sys/vdev_impl.h>
+ #include <sys/vdev_draid.h>
+ #include <sys/zio.h>
++#include <sys/zio_checksum.h>
+ #include <sys/abd.h>
+ #include <sys/fs/zfs.h>
+ 
+@@ -102,6 +103,7 @@ vdev_mirror_stat_fini(void)
+  */
+ typedef struct mirror_child {
+ 	vdev_t		*mc_vd;
++	abd_t		*mc_abd;
+ 	uint64_t	mc_offset;
+ 	int		mc_error;
+ 	int		mc_load;
+@@ -434,6 +436,10 @@ vdev_mirror_child_done(zio_t *zio)
+ {
+ 	mirror_child_t *mc = zio->io_private;
+ 
++	/* See scrubbing read comment in vdev_mirror_io_start() */
++	if (zio->io_flags & ZIO_FLAG_SCRUB && zio->io_bp == NULL)
++		mc->mc_abd = zio->io_abd;
++
+ 	mc->mc_error = zio->io_error;
+ 	mc->mc_tried = 1;
+ 	mc->mc_skipped = 0;
+@@ -637,15 +643,16 @@ vdev_mirror_io_start(zio_t *zio)
+ 	}
+ 
+ 	if (zio->io_type == ZIO_TYPE_READ) {
+-		if (zio->io_bp != NULL &&
+-		    (zio->io_flags & ZIO_FLAG_SCRUB) && !mm->mm_resilvering) {
++		if ((zio->io_flags & ZIO_FLAG_SCRUB) && !mm->mm_resilvering) {
+ 			/*
+-			 * For scrubbing reads (if we can verify the
+-			 * checksum here, as indicated by io_bp being
+-			 * non-NULL) we need to allocate a read buffer for
+-			 * each child and issue reads to all children.  If
+-			 * any child succeeds, it will copy its data into
+-			 * zio->io_data in vdev_mirror_scrub_done.
++			 * For scrubbing reads we need to allocate a buffer
++			 * for each child and issue reads to all children.
++			 * If we can verify the checksum here, as indicated
++			 * by io_bp being non-NULL, the data will be copied
++			 * into zio->io_data in vdev_mirror_scrub_done().
++			 * If not, then vdev_mirror_io_done() will compare
++			 * all of the read buffers and return a checksum
++			 * error if they aren't all identical.
+ 			 */
+ 			for (c = 0; c < mm->mm_children; c++) {
+ 				mc = &mm->mm_child[c];
+@@ -663,7 +670,8 @@ vdev_mirror_io_start(zio_t *zio)
+ 				    abd_alloc_sametype(zio->io_abd,
+ 				    zio->io_size), zio->io_size,
+ 				    zio->io_type, zio->io_priority, 0,
+-				    vdev_mirror_scrub_done, mc));
++				    zio->io_bp ? vdev_mirror_scrub_done :
++				    vdev_mirror_child_done, mc));
+ 			}
+ 			zio_execute(zio);
+ 			return;
+@@ -731,6 +739,7 @@ vdev_mirror_io_done(zio_t *zio)
+ 	int c;
+ 	int good_copies = 0;
+ 	int unexpected_errors = 0;
++	int last_good_copy = -1;
+ 
+ 	if (mm == NULL)
+ 		return;
+@@ -742,6 +751,7 @@ vdev_mirror_io_done(zio_t *zio)
+ 			if (!mc->mc_skipped)
+ 				unexpected_errors++;
+ 		} else if (mc->mc_tried) {
++			last_good_copy = c;
+ 			good_copies++;
+ 		}
+ 	}
+@@ -755,7 +765,6 @@ vdev_mirror_io_done(zio_t *zio)
+ 		 * no non-degraded top-level vdevs left, and not update DTLs
+ 		 * if we intend to reallocate.
+ 		 */
+-		/* XXPOLICY */
+ 		if (good_copies != mm->mm_children) {
+ 			/*
+ 			 * Always require at least one good copy.
+@@ -782,7 +791,6 @@ vdev_mirror_io_done(zio_t *zio)
+ 	/*
+ 	 * If we don't have a good copy yet, keep trying other children.
+ 	 */
+-	/* XXPOLICY */
+ 	if (good_copies == 0 && (c = vdev_mirror_child_select(zio)) != -1) {
+ 		ASSERT(c >= 0 && c < mm->mm_children);
+ 		mc = &mm->mm_child[c];
+@@ -794,7 +802,59 @@ vdev_mirror_io_done(zio_t *zio)
+ 		return;
+ 	}
+ 
+-	/* XXPOLICY */
++	/*
++	 * If we're scrubbing but don't have a BP available (because this
++	 * vdev is under a raidz or draid vdev) then the best we can do is
++	 * compare all of the copies read.  If they're not identical then
++	 * return a checksum error and the most likely correct data.  The
++	 * raidz code will issue a repair I/O if possible.
++	 */
++	if (zio->io_flags & ZIO_FLAG_SCRUB && zio->io_bp == NULL) {
++		abd_t *last_good_abd;
++
++		ASSERT(zio->io_vd->vdev_ops == &vdev_replacing_ops ||
++		    zio->io_vd->vdev_ops == &vdev_spare_ops);
++
++		if (good_copies > 1) {
++			last_good_abd = mm->mm_child[last_good_copy].mc_abd;
++			abd_t *best_abd = NULL;
++
++			for (c = 0; c < last_good_copy; c++) {
++				mc = &mm->mm_child[c];
++
++				if (mc->mc_error || !mc->mc_tried)
++					continue;
++
++				if (abd_cmp(mc->mc_abd, last_good_abd) != 0)
++					zio->io_error = SET_ERROR(ECKSUM);
++
++				/*
++				 * The distributed spare is always prefered
++				 * by vdev_mirror_child_select() so it's
++				 * considered to be the best candidate.
++				 */
++				if (best_abd == NULL &&
++				    mc->mc_vd->vdev_ops ==
++				    &vdev_draid_spare_ops) {
++					best_abd = mc->mc_abd;
++				}
++			}
++
++			abd_copy(zio->io_abd, best_abd ? best_abd :
++			    last_good_abd, zio->io_size);
++
++		} else if (good_copies == 1) {
++			last_good_abd = mm->mm_child[last_good_copy].mc_abd;
++			abd_copy(zio->io_abd, last_good_abd, zio->io_size);
++		}
++
++		for (c = 0; c < mm->mm_children; c++) {
++			mc = &mm->mm_child[c];
++			abd_free(mc->mc_abd);
++			mc->mc_abd = NULL;
++		}
++	}
++
+ 	if (good_copies == 0) {
+ 		zio->io_error = vdev_mirror_worst_error(mm);
+ 		ASSERT(zio->io_error != 0);
+diff --git a/module/zfs/vdev_raidz.c b/module/zfs/vdev_raidz.c
+index b14e995e3c..888f9de572 100644
+--- a/module/zfs/vdev_raidz.c
++++ b/module/zfs/vdev_raidz.c
+@@ -1791,6 +1791,9 @@ vdev_raidz_io_done_verified(zio_t *zio, raidz_row_t *rr)
+ 		} else if (c < rr->rr_firstdatacol && !rc->rc_tried) {
+ 			parity_untried++;
+ 		}
++
++		if (rc->rc_force_repair)
++			unexpected_errors++;
+ 	}
+ 
+ 	/*
+@@ -2155,9 +2158,20 @@ vdev_raidz_io_done_reconstruct_known_missing(zio_t *zio, raidz_map_t *rm,
+ 	for (int c = 0; c < rr->rr_cols; c++) {
+ 		raidz_col_t *rc = &rr->rr_col[c];
+ 
+-		if (rc->rc_error) {
+-			ASSERT(rc->rc_error != ECKSUM);	/* child has no bp */
++		/*
++		 * If scrubbing and a replacing/sparing child vdev determined
++		 * that not all of its children have an identical copy of the
++		 * data, then clear the error so the column is treated like
++		 * any other read and force a repair to correct the damage.
++		 */
++		if (rc->rc_error == ECKSUM) {
++			ASSERT(zio->io_flags & ZIO_FLAG_SCRUB);
++			vdev_raidz_checksum_error(zio, rc, rc->rc_abd);
++			rc->rc_force_repair = 1;
++			rc->rc_error = 0;
++		}
+ 
++		if (rc->rc_error) {
+ 			if (c < rr->rr_firstdatacol)
+ 				parity_errors++;
+ 			else
+diff --git a/tests/runfiles/common.run b/tests/runfiles/common.run
+index 19919a00af..709bd2533a 100644
+--- a/tests/runfiles/common.run
++++ b/tests/runfiles/common.run
+@@ -747,7 +747,8 @@ tags = ['functional', 'raidz']
+ 
+ [tests/functional/redundancy]
+ tests = ['redundancy_draid', 'redundancy_draid1', 'redundancy_draid2',
+-    'redundancy_draid3', 'redundancy_draid_damaged', 'redundancy_draid_spare1',
++    'redundancy_draid3', 'redundancy_draid_damaged1',
++    'redundancy_draid_damaged2', 'redundancy_draid_spare1',
+     'redundancy_draid_spare2', 'redundancy_draid_spare3', 'redundancy_mirror',
+     'redundancy_raidz', 'redundancy_raidz1', 'redundancy_raidz2',
+     'redundancy_raidz3', 'redundancy_stripe']
+diff --git a/tests/test-runner/bin/zts-report.py.in b/tests/test-runner/bin/zts-report.py.in
+index 559e98dd07..71b0cc8d64 100755
+--- a/tests/test-runner/bin/zts-report.py.in
++++ b/tests/test-runner/bin/zts-report.py.in
+@@ -244,8 +244,6 @@ maybe = {
+     'pyzfs/pyzfs_unittest': ['SKIP', python_deps_reason],
+     'pool_checkpoint/checkpoint_discard_busy': ['FAIL', '11946'],
+     'projectquota/setup': ['SKIP', exec_reason],
+-    'redundancy/redundancy_004_neg': ['FAIL', '7290'],
+-    'redundancy/redundancy_draid_spare3': ['SKIP', known_reason],
+     'removal/removal_condense_export': ['FAIL', known_reason],
+     'reservation/reservation_008_pos': ['FAIL', '7741'],
+     'reservation/reservation_018_pos': ['FAIL', '5642'],
+diff --git a/tests/zfs-tests/tests/functional/redundancy/Makefile.am b/tests/zfs-tests/tests/functional/redundancy/Makefile.am
+index 42c11c4aa9..7c1930beb7 100644
+--- a/tests/zfs-tests/tests/functional/redundancy/Makefile.am
++++ b/tests/zfs-tests/tests/functional/redundancy/Makefile.am
+@@ -6,7 +6,8 @@ dist_pkgdata_SCRIPTS = \
+ 	redundancy_draid1.ksh \
+ 	redundancy_draid2.ksh \
+ 	redundancy_draid3.ksh \
+-	redundancy_draid_damaged.ksh \
++	redundancy_draid_damaged1.ksh \
++	redundancy_draid_damaged2.ksh \
+ 	redundancy_draid_spare1.ksh \
+ 	redundancy_draid_spare2.ksh \
+ 	redundancy_draid_spare3.ksh \
+diff --git a/tests/zfs-tests/tests/functional/redundancy/redundancy_draid_damaged.ksh b/tests/zfs-tests/tests/functional/redundancy/redundancy_draid_damaged1.ksh
+similarity index 86%
+rename from tests/zfs-tests/tests/functional/redundancy/redundancy_draid_damaged.ksh
+rename to tests/zfs-tests/tests/functional/redundancy/redundancy_draid_damaged1.ksh
+index 6796cc78a1..1c1183c09f 100755
+--- a/tests/zfs-tests/tests/functional/redundancy/redundancy_draid_damaged.ksh
++++ b/tests/zfs-tests/tests/functional/redundancy/redundancy_draid_damaged1.ksh
+@@ -89,22 +89,9 @@ function test_sequential_resilver # <pool> <parity> <dir>
+ 	done
+ 
+ 	log_must zpool scrub -w $pool
++	log_must zpool status $pool
+ 
+-	# When only a single child was overwritten the sequential resilver
+-	# can fully repair the damange from parity and the scrub will have
+-	# nothing to repair. When multiple children are silently damaged
+-	# the sequential resilver will calculate the wrong data since only
+-	# the parity information is used and it cannot be verified with
+-	# the checksum. However, since only the resilvering devices are
+-	# written to with the bad data a subsequent scrub will be able to
+-	# fully repair the pool.
+-	#
+-	if [[ $nparity == 1 ]]; then
+-		log_must check_pool_status $pool "scan" "repaired 0B"
+-	else
+-		log_mustnot check_pool_status $pool "scan" "repaired 0B"
+-	fi
+-
++	log_mustnot check_pool_status $pool "scan" "repaired 0B"
+ 	log_must check_pool_status $pool "errors" "No known data errors"
+ 	log_must check_pool_status $pool "scan" "with 0 errors"
+ }
+diff --git a/tests/zfs-tests/tests/functional/redundancy/redundancy_draid_damaged2.ksh b/tests/zfs-tests/tests/functional/redundancy/redundancy_draid_damaged2.ksh
+new file mode 100755
+index 0000000000..8e06db9bad
+--- /dev/null
++++ b/tests/zfs-tests/tests/functional/redundancy/redundancy_draid_damaged2.ksh
+@@ -0,0 +1,157 @@
++#!/bin/ksh -p
++#
++# CDDL HEADER START
++#
++# The contents of this file are subject to the terms of the
++# Common Development and Distribution License (the "License").
++# You may not use this file except in compliance with the License.
++#
++# You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
++# or http://www.opensolaris.org/os/licensing.
++# See the License for the specific language governing permissions
++# and limitations under the License.
++#
++# When distributing Covered Code, include this CDDL HEADER in each
++# file and include the License file at usr/src/OPENSOLARIS.LICENSE.
++# If applicable, add the following below this CDDL HEADER, with the
++# fields enclosed by brackets "[]" replaced with your own identifying
++# information: Portions Copyright [yyyy] [name of copyright owner]
++#
++# CDDL HEADER END
++#
++
++#
++# Copyright (c) 2022 by Lawrence Livermore National Security, LLC.
++#
++
++. $STF_SUITE/include/libtest.shlib
++. $STF_SUITE/tests/functional/redundancy/redundancy.kshlib
++
++#
++# DESCRIPTION:
++#	When sequentially resilvering a dRAID pool to a distributed spare
++#	silent damage to an online vdev in a replacing or spare mirror vdev
++#	is not expected to be repaired.  Not only does the rebuild have no
++#	reason to suspect the silent damage but even if it did there's no
++#	checksum available to determine the correct copy and make the repair.
++#	However, the subsequent scrub should detect and repair any damage.
++#
++# STRATEGY:
++#	1. Create block device files for the test draid pool
++#	2. For each parity value [1..3]
++#		a. Create a draid pool
++#		b. Fill it with some directories/files
++#		c. Systematically damage and replace three devices by:
++#			- Overwrite the device
++#			- Replace the damaged vdev with a distributed spare
++#			- Scrub the pool and verify repair IO is issued
++#		d. Detach the distributed spares
++#		e. Scrub the pool and verify there was nothing to repair
++#		f. Destroy the draid pool
++#
++
++typeset -r devs=7
++typeset -r dev_size_mb=512
++typeset -a disks
++
++prefetch_disable=$(get_tunable PREFETCH_DISABLE)
++rebuild_scrub_enabled=$(get_tunable REBUILD_SCRUB_ENABLED)
++
++function cleanup
++{
++	poolexists "$TESTPOOL" && destroy_pool "$TESTPOOL"
++
++	for i in {0..$devs}; do
++		rm -f "$TEST_BASE_DIR/dev-$i"
++	done
++
++	set_tunable32 PREFETCH_DISABLE $prefetch_disable
++	set_tunable32 REBUILD_SCRUB_ENABLED $rebuild_scrub_enabled
++}
++
++log_onexit cleanup
++
++log_must set_tunable32 PREFETCH_DISABLE 1
++log_must set_tunable32 REBUILD_SCRUB_ENABLED 0
++
++# Disk files which will be used by pool
++for i in {0..$(($devs - 1))}; do
++	device=$TEST_BASE_DIR/dev-$i
++	log_must truncate -s ${dev_size_mb}M $device
++	disks[${#disks[*]}+1]=$device
++done
++
++# Disk file which will be attached
++log_must truncate -s 512M $TEST_BASE_DIR/dev-$devs
++
++dir=$TEST_BASE_DIR
++
++for nparity in 1 2 3; do
++	raid=draid${nparity}:3s
++
++	log_must zpool create -f -O compression=off -o cachefile=none \
++	    $TESTPOOL $raid ${disks[@]}
++	# log_must zfs set primarycache=metadata $TESTPOOL
++
++	log_must zfs create $TESTPOOL/fs
++	log_must fill_fs /$TESTPOOL/fs 1 256 10 1024 R
++
++	log_must zfs create -o compress=on $TESTPOOL/fs2
++	log_must fill_fs /$TESTPOOL/fs2 1 256 10 1024 R
++
++	log_must zfs create -o compress=on -o recordsize=8k $TESTPOOL/fs3
++	log_must fill_fs /$TESTPOOL/fs3 1 256 10 1024 R
++
++	log_must zpool export $TESTPOOL
++	log_must zpool import -o cachefile=none -d $dir $TESTPOOL
++
++	log_must check_pool_status $TESTPOOL "errors" "No known data errors"
++
++	for nspare in 0 1 2; do
++		damaged=$dir/dev-${nspare}
++		spare=draid${nparity}-0-${nspare}
++
++		log_must zpool export $TESTPOOL
++		log_must dd conv=notrunc if=/dev/zero of=$damaged \
++		    bs=1M seek=4 count=$(($dev_size_mb-4))
++		log_must zpool import -o cachefile=none -d $dir $TESTPOOL
++
++		log_must zpool replace -fsw $TESTPOOL $damaged $spare
++
++		# Scrub the pool after the sequential resilver and verify
++		# that the silent damage was repaired by the scrub.
++		log_must zpool scrub -w $TESTPOOL
++		log_must zpool status $TESTPOOL
++		log_must check_pool_status $TESTPOOL "errors" \
++		    "No known data errors"
++		log_must check_pool_status $TESTPOOL "scan" "with 0 errors"
++		log_mustnot check_pool_status $TESTPOOL "scan" "repaired 0B"
++	done
++
++	for nspare in 0 1 2; do
++		log_must check_vdev_state $TESTPOOL \
++		    spare-${nspare} "ONLINE"
++		log_must check_vdev_state $TESTPOOL \
++		    ${dir}/dev-${nspare} "ONLINE"
++		log_must check_vdev_state $TESTPOOL \
++		    draid${nparity}-0-${nspare} "ONLINE"
++	done
++
++	# Detach the distributed spares and scrub the pool again to
++	# verify no damage remained on the originally corrupted vdevs.
++	for nspare in 0 1 2; do
++		log_must zpool detach $TESTPOOL draid${nparity}-0-${nspare}
++	done
++
++	log_must zpool clear $TESTPOOL
++	log_must zpool scrub -w $TESTPOOL
++	log_must zpool status $TESTPOOL
++
++	log_must check_pool_status $TESTPOOL "errors" "No known data errors"
++	log_must check_pool_status $TESTPOOL "scan" "with 0 errors"
++	log_must check_pool_status $TESTPOOL "scan" "repaired 0B"
++
++	log_must zpool destroy "$TESTPOOL"
++done
++
++log_pass "draid damaged device scrub test succeeded."
+-- 
+2.34.1
+

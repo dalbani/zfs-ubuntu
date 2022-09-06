@@ -1,0 +1,28 @@
+From 57e1052d334819dc5bc95102182065ab5979e686 Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Tue, 2 Aug 2022 10:04:38 -0700
+Subject: [PATCH] Linux 5.19 compat: META
+
+Update the META file to reflect compatibility with the 5.19 kernel.
+
+Reviewed-by: Tony Hutter <hutter2@llnl.gov>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #13715
+---
+ META | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/META b/META
+index 3fd6c578c7..baf85fe89d 100644
+--- a/META
++++ b/META
+@@ -6,5 +6,5 @@ Release:       1
+ Release-Tags:  relext
+ License:       CDDL
+ Author:        OpenZFS
+-Linux-Maximum: 5.18
++Linux-Maximum: 5.19
+ Linux-Minimum: 3.10
+-- 
+2.34.1
+

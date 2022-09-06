@@ -1,0 +1,481 @@
+From 884364ea85423fdd431f6269c42228ab74c4846d Mon Sep 17 00:00:00 2001
+From: Alexander Motin <mav@FreeBSD.org>
+Date: Wed, 25 May 2022 13:12:52 -0400
+Subject: [PATCH] More speculative prefetcher improvements
+
+- Make prefetch distance adaptive: up to 4MB prefetch doubles for
+every, hit same as before, but after that it grows by 1/8 every time
+the prefetch read does not complete in time to satisfy the demand.
+My tests show that 4MB is sufficient for wide NVMe pool to saturate
+single reader thread at 2.5GB/s, while new 64MB maximum allows the
+same thread to reach 1.5GB/s on wide HDD pool.  Further distance
+increase may increase speed even more, but less dramatic and with
+higher latency.
+
+ - Allow early reuse of inactive prefetch streams: streams that never
+saw hits can be reused immediately if there is a demand, while others
+can be reused after 1s of inactivity, starting with the oldest.  After
+2s of inactivity streams are deleted to free resources same as before.
+This allows by several times increase strided read performance on HDD
+pool in presence of simultaneous random reads, previously filling the
+zfetch_max_streams limit for seconds and so blocking most of prefetch.
+
+ - Always issue intermediate indirect block reads with SYNC priority.
+Each of those reads if delayed for longer may delay up to 1024 other
+block prefetches, that may be not good for wide pools.
+
+Reviewed-by: Allan Jude <allan@klarasystems.com>
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Alexander Motin <mav@FreeBSD.org>
+Sponsored-By: iXsystems, Inc.
+Closes #13452
+---
+ include/sys/dbuf.h       |   2 +-
+ include/sys/dmu_zfetch.h |  16 ++--
+ man/man4/zfs.4           |  17 +++-
+ module/zfs/dbuf.c        |  14 +--
+ module/zfs/dmu_zfetch.c  | 185 +++++++++++++++++++++------------------
+ 5 files changed, 133 insertions(+), 101 deletions(-)
+
+diff --git a/include/sys/dbuf.h b/include/sys/dbuf.h
+index e7289c0fe1..93d80066be 100644
+--- a/include/sys/dbuf.h
++++ b/include/sys/dbuf.h
+@@ -329,7 +329,7 @@ typedef struct dbuf_hash_table {
+ 	krwlock_t hash_rwlocks[DBUF_RWLOCKS] ____cacheline_aligned;
+ } dbuf_hash_table_t;
+ 
+-typedef void (*dbuf_prefetch_fn)(void *, boolean_t);
++typedef void (*dbuf_prefetch_fn)(void *, uint64_t, uint64_t, boolean_t);
+ 
+ uint64_t dbuf_whichblock(const struct dnode *di, const int64_t level,
+     const uint64_t offset);
+diff --git a/include/sys/dmu_zfetch.h b/include/sys/dmu_zfetch.h
+index 4c220b0c79..cd1b79eb8e 100644
+--- a/include/sys/dmu_zfetch.h
++++ b/include/sys/dmu_zfetch.h
+@@ -49,20 +49,18 @@ typedef struct zfetch {
+ 
+ typedef struct zstream {
+ 	uint64_t	zs_blkid;	/* expect next access at this blkid */
+-	uint64_t	zs_pf_blkid1;	/* first block to prefetch */
+-	uint64_t	zs_pf_blkid;	/* block to prefetch up to */
+-
+-	/*
+-	 * We will next prefetch the L1 indirect block of this level-0
+-	 * block id.
+-	 */
+-	uint64_t	zs_ipf_blkid1;	/* first block to prefetch */
+-	uint64_t	zs_ipf_blkid;	/* block to prefetch up to */
++	unsigned int	zs_pf_dist;	/* data prefetch distance in bytes */
++	unsigned int	zs_ipf_dist;	/* L1 prefetch distance in bytes */
++	uint64_t	zs_pf_start;	/* first data block to prefetch */
++	uint64_t	zs_pf_end;	/* data block to prefetch up to */
++	uint64_t	zs_ipf_start;	/* first data block to prefetch L1 */
++	uint64_t	zs_ipf_end;	/* data block to prefetch L1 up to */
+ 
+ 	list_node_t	zs_node;	/* link for zf_stream */
+ 	hrtime_t	zs_atime;	/* time last prefetch issued */
+ 	zfetch_t	*zs_fetch;	/* parent fetch */
+ 	boolean_t	zs_missed;	/* stream saw cache misses */
++	boolean_t	zs_more;	/* need more distant prefetch */
+ 	zfs_refcount_t	zs_callers;	/* number of pending callers */
+ 	/*
+ 	 * Number of stream references: dnode, callers and pending blocks.
+diff --git a/man/man4/zfs.4 b/man/man4/zfs.4
+index 6921116848..6495e9b4cd 100644
+--- a/man/man4/zfs.4
++++ b/man/man4/zfs.4
+@@ -475,7 +475,15 @@ However, this is limited by
+ .It Sy zfetch_array_rd_sz Ns = Ns Sy 1048576 Ns B Po 1MB Pc Pq ulong
+ If prefetching is enabled, disable prefetching for reads larger than this size.
+ .
+-.It Sy zfetch_max_distance Ns = Ns Sy 8388608 Ns B Po 8MB Pc Pq uint
++.It Sy zfetch_min_distance Ns = Ns Sy 4194304 Ns B Po 4 MiB Pc Pq uint
++Min bytes to prefetch per stream.
++Prefetch distance starts from the demand access size and quickly grows to
++this value, doubling on each hit.
++After that it may grow further by 1/8 per hit, but only if some prefetch
++since last time haven't completed in time to satisfy demand request, i.e.
++prefetch depth didn't cover the read latency or the pool got saturated.
++.
++.It Sy zfetch_max_distance Ns = Ns Sy 67108864 Ns B Po 64 MiB Pc Pq uint
+ Max bytes to prefetch per stream.
+ .
+ .It Sy zfetch_max_idistance Ns = Ns Sy 67108864 Ns B Po 64MB Pc Pq uint
+@@ -484,8 +492,11 @@ Max bytes to prefetch indirects for per stream.
+ .It Sy zfetch_max_streams Ns = Ns Sy 8 Pq uint
+ Max number of streams per zfetch (prefetch streams per file).
+ .
+-.It Sy zfetch_min_sec_reap Ns = Ns Sy 2 Pq uint
+-Min time before an active prefetch stream can be reclaimed
++.It Sy zfetch_min_sec_reap Ns = Ns Sy 1 Pq uint
++Min time before inactive prefetch stream can be reclaimed
++.
++.It Sy zfetch_max_sec_reap Ns = Ns Sy 2 Pq uint
++Max time before inactive prefetch stream can be deleted
+ .
+ .It Sy zfs_abd_scatter_enabled Ns = Ns Sy 1 Ns | Ns 0 Pq int
+ Enables ARC from using scatter/gather lists and forces all allocations to be
+diff --git a/module/zfs/dbuf.c b/module/zfs/dbuf.c
+index 247eeddb6c..12c98b440f 100644
+--- a/module/zfs/dbuf.c
++++ b/module/zfs/dbuf.c
+@@ -3122,8 +3122,10 @@ typedef struct dbuf_prefetch_arg {
+ static void
+ dbuf_prefetch_fini(dbuf_prefetch_arg_t *dpa, boolean_t io_done)
+ {
+-	if (dpa->dpa_cb != NULL)
+-		dpa->dpa_cb(dpa->dpa_arg, io_done);
++	if (dpa->dpa_cb != NULL) {
++		dpa->dpa_cb(dpa->dpa_arg, dpa->dpa_zb.zb_level,
++		    dpa->dpa_zb.zb_blkid, io_done);
++	}
+ 	kmem_free(dpa, sizeof (*dpa));
+ }
+ 
+@@ -3257,7 +3259,8 @@ dbuf_prefetch_indirect_done(zio_t *zio, const zbookmark_phys_t *zb,
+ 		    dpa->dpa_zb.zb_object, dpa->dpa_curlevel, nextblkid);
+ 
+ 		(void) arc_read(dpa->dpa_zio, dpa->dpa_spa,
+-		    bp, dbuf_prefetch_indirect_done, dpa, dpa->dpa_prio,
++		    bp, dbuf_prefetch_indirect_done, dpa,
++		    ZIO_PRIORITY_SYNC_READ,
+ 		    ZIO_FLAG_CANFAIL | ZIO_FLAG_SPECULATIVE,
+ 		    &iter_aflags, &zb);
+ 	}
+@@ -3392,7 +3395,8 @@ dbuf_prefetch_impl(dnode_t *dn, int64_t level, uint64_t blkid,
+ 		SET_BOOKMARK(&zb, ds != NULL ? ds->ds_object : DMU_META_OBJSET,
+ 		    dn->dn_object, curlevel, curblkid);
+ 		(void) arc_read(dpa->dpa_zio, dpa->dpa_spa,
+-		    &bp, dbuf_prefetch_indirect_done, dpa, prio,
++		    &bp, dbuf_prefetch_indirect_done, dpa,
++		    ZIO_PRIORITY_SYNC_READ,
+ 		    ZIO_FLAG_CANFAIL | ZIO_FLAG_SPECULATIVE,
+ 		    &iter_aflags, &zb);
+ 	}
+@@ -3404,7 +3408,7 @@ dbuf_prefetch_impl(dnode_t *dn, int64_t level, uint64_t blkid,
+ 	return (1);
+ no_issue:
+ 	if (cb != NULL)
+-		cb(arg, B_FALSE);
++		cb(arg, level, blkid, B_FALSE);
+ 	return (0);
+ }
+ 
+diff --git a/module/zfs/dmu_zfetch.c b/module/zfs/dmu_zfetch.c
+index 7566663bd3..bca881d82f 100644
+--- a/module/zfs/dmu_zfetch.c
++++ b/module/zfs/dmu_zfetch.c
+@@ -48,9 +48,13 @@ int zfs_prefetch_disable = B_FALSE;
+ /* max # of streams per zfetch */
+ unsigned int	zfetch_max_streams = 8;
+ /* min time before stream reclaim */
+-unsigned int	zfetch_min_sec_reap = 2;
+-/* max bytes to prefetch per stream (default 8MB) */
+-unsigned int	zfetch_max_distance = 8 * 1024 * 1024;
++static unsigned int	zfetch_min_sec_reap = 1;
++/* max time before stream delete */
++static unsigned int	zfetch_max_sec_reap = 2;
++/* min bytes to prefetch per stream (default 4MB) */
++static unsigned int	zfetch_min_distance = 4 * 1024 * 1024;
++/* max bytes to prefetch per stream (default 64MB) */
++unsigned int	zfetch_max_distance = 64 * 1024 * 1024;
+ /* max bytes to prefetch indirects for per stream (default 64MB) */
+ unsigned int	zfetch_max_idistance = 64 * 1024 * 1024;
+ /* max number of bytes in an array_read in which we allow prefetching (1MB) */
+@@ -195,74 +199,99 @@ dmu_zfetch_fini(zfetch_t *zf)
+ }
+ 
+ /*
+- * If there aren't too many streams already, create a new stream.
++ * If there aren't too many active streams already, create one more.
++ * In process delete/reuse all streams without hits for zfetch_max_sec_reap.
++ * If needed, reuse oldest stream without hits for zfetch_min_sec_reap or ever.
+  * The "blkid" argument is the next block that we expect this stream to access.
+- * While we're here, clean up old streams (which haven't been
+- * accessed for at least zfetch_min_sec_reap seconds).
+  */
+ static void
+ dmu_zfetch_stream_create(zfetch_t *zf, uint64_t blkid)
+ {
+-	zstream_t *zs_next;
+-	hrtime_t now = gethrtime();
++	zstream_t *zs, *zs_next, *zs_old = NULL;
++	hrtime_t now = gethrtime(), t;
+ 
+ 	ASSERT(MUTEX_HELD(&zf->zf_lock));
+ 
+ 	/*
+-	 * Clean up old streams.
++	 * Delete too old streams, reusing the first found one.
+ 	 */
+-	for (zstream_t *zs = list_head(&zf->zf_stream);
+-	    zs != NULL; zs = zs_next) {
++	t = now - SEC2NSEC(zfetch_max_sec_reap);
++	for (zs = list_head(&zf->zf_stream); zs != NULL; zs = zs_next) {
+ 		zs_next = list_next(&zf->zf_stream, zs);
+ 		/*
+ 		 * Skip if still active.  1 -- zf_stream reference.
+ 		 */
+ 		if (zfs_refcount_count(&zs->zs_refs) != 1)
+ 			continue;
+-		if (((now - zs->zs_atime) / NANOSEC) >
+-		    zfetch_min_sec_reap)
++		if (zs->zs_atime > t)
++			continue;
++		if (zs_old)
+ 			dmu_zfetch_stream_remove(zf, zs);
++		else
++			zs_old = zs;
++	}
++	if (zs_old) {
++		zs = zs_old;
++		goto reuse;
+ 	}
+ 
+ 	/*
+ 	 * The maximum number of streams is normally zfetch_max_streams,
+ 	 * but for small files we lower it such that it's at least possible
+ 	 * for all the streams to be non-overlapping.
+-	 *
+-	 * If we are already at the maximum number of streams for this file,
+-	 * even after removing old streams, then don't create this stream.
+ 	 */
+ 	uint32_t max_streams = MAX(1, MIN(zfetch_max_streams,
+ 	    zf->zf_dnode->dn_maxblkid * zf->zf_dnode->dn_datablksz /
+ 	    zfetch_max_distance));
+ 	if (zf->zf_numstreams >= max_streams) {
++		t = now - SEC2NSEC(zfetch_min_sec_reap);
++		for (zs = list_head(&zf->zf_stream); zs != NULL;
++		    zs = list_next(&zf->zf_stream, zs)) {
++			if (zfs_refcount_count(&zs->zs_refs) != 1)
++				continue;
++			if (zs->zs_atime > t)
++				continue;
++			if (zs_old == NULL || zs->zs_atime < zs_old->zs_atime)
++				zs_old = zs;
++		}
++		if (zs_old) {
++			zs = zs_old;
++			goto reuse;
++		}
+ 		ZFETCHSTAT_BUMP(zfetchstat_max_streams);
+ 		return;
+ 	}
+ 
+-	zstream_t *zs = kmem_zalloc(sizeof (*zs), KM_SLEEP);
+-	zs->zs_blkid = blkid;
+-	zs->zs_pf_blkid1 = blkid;
+-	zs->zs_pf_blkid = blkid;
+-	zs->zs_ipf_blkid1 = blkid;
+-	zs->zs_ipf_blkid = blkid;
+-	zs->zs_atime = now;
++	zs = kmem_zalloc(sizeof (*zs), KM_SLEEP);
+ 	zs->zs_fetch = zf;
+-	zs->zs_missed = B_FALSE;
+ 	zfs_refcount_create(&zs->zs_callers);
+ 	zfs_refcount_create(&zs->zs_refs);
+ 	/* One reference for zf_stream. */
+ 	zfs_refcount_add(&zs->zs_refs, NULL);
+ 	zf->zf_numstreams++;
+ 	list_insert_head(&zf->zf_stream, zs);
++
++reuse:
++	zs->zs_blkid = blkid;
++	zs->zs_pf_dist = 0;
++	zs->zs_pf_start = blkid;
++	zs->zs_pf_end = blkid;
++	zs->zs_ipf_dist = 0;
++	zs->zs_ipf_start = blkid;
++	zs->zs_ipf_end = blkid;
++	/* Allow immediate stream reuse until first hit. */
++	zs->zs_atime = now - SEC2NSEC(zfetch_min_sec_reap);
++	zs->zs_missed = B_FALSE;
++	zs->zs_more = B_FALSE;
+ }
+ 
+ static void
+-dmu_zfetch_stream_done(void *arg, boolean_t io_issued)
++dmu_zfetch_done(void *arg, uint64_t level, uint64_t blkid, boolean_t io_issued)
+ {
+-	(void) io_issued;
+ 	zstream_t *zs = arg;
+ 
++	if (io_issued && level == 0 && blkid < zs->zs_blkid)
++		zs->zs_more = B_TRUE;
+ 	if (zfs_refcount_remove(&zs->zs_refs, NULL) == 0)
+ 		dmu_zfetch_stream_fini(zs);
+ }
+@@ -284,11 +313,6 @@ dmu_zfetch_prepare(zfetch_t *zf, uint64_t blkid, uint64_t nblks,
+     boolean_t fetch_data, boolean_t have_lock)
+ {
+ 	zstream_t *zs;
+-	int64_t pf_start, ipf_start;
+-	int64_t pf_ahead_blks, max_blks;
+-	int max_dist_blks, pf_nblks, ipf_nblks;
+-	uint64_t end_of_access_blkid, maxblkid;
+-	end_of_access_blkid = blkid + nblks;
+ 	spa_t *spa = zf->zf_dnode->dn_objset->os_spa;
+ 
+ 	if (zfs_prefetch_disable)
+@@ -317,7 +341,7 @@ dmu_zfetch_prepare(zfetch_t *zf, uint64_t blkid, uint64_t nblks,
+ 	 * A fast path for small files for which no prefetch will
+ 	 * happen.
+ 	 */
+-	maxblkid = zf->zf_dnode->dn_maxblkid;
++	uint64_t maxblkid = zf->zf_dnode->dn_maxblkid;
+ 	if (maxblkid < 2) {
+ 		if (!have_lock)
+ 			rw_exit(&zf->zf_dnode->dn_struct_rwlock);
+@@ -345,6 +369,7 @@ dmu_zfetch_prepare(zfetch_t *zf, uint64_t blkid, uint64_t nblks,
+ 	 * If the file is ending, remove the matching stream if found.
+ 	 * If not found then it is too late to create a new one now.
+ 	 */
++	uint64_t end_of_access_blkid = blkid + nblks;
+ 	if (end_of_access_blkid >= maxblkid) {
+ 		if (zs != NULL)
+ 			dmu_zfetch_stream_remove(zf, zs);
+@@ -377,60 +402,48 @@ dmu_zfetch_prepare(zfetch_t *zf, uint64_t blkid, uint64_t nblks,
+ 
+ 	/*
+ 	 * This access was to a block that we issued a prefetch for on
+-	 * behalf of this stream. Issue further prefetches for this stream.
++	 * behalf of this stream.  Calculate further prefetch distances.
+ 	 *
+-	 * Normally, we start prefetching where we stopped
+-	 * prefetching last (zs_pf_blkid).  But when we get our first
+-	 * hit on this stream, zs_pf_blkid == zs_blkid, we don't
+-	 * want to prefetch the block we just accessed.  In this case,
+-	 * start just after the block we just accessed.
+-	 */
+-	pf_start = MAX(zs->zs_pf_blkid, end_of_access_blkid);
+-	if (zs->zs_pf_blkid1 < end_of_access_blkid)
+-		zs->zs_pf_blkid1 = end_of_access_blkid;
+-	if (zs->zs_ipf_blkid1 < end_of_access_blkid)
+-		zs->zs_ipf_blkid1 = end_of_access_blkid;
+-
+-	/*
+-	 * Double our amount of prefetched data, but don't let the
+-	 * prefetch get further ahead than zfetch_max_distance.
++	 * Start prefetch from the demand access size (nblks).  Double the
++	 * distance every access up to zfetch_min_distance.  After that only
++	 * if needed increase the distance by 1/8 up to zfetch_max_distance.
+ 	 */
++	unsigned int nbytes = nblks << zf->zf_dnode->dn_datablkshift;
++	unsigned int pf_nblks;
+ 	if (fetch_data) {
+-		max_dist_blks =
+-		    zfetch_max_distance >> zf->zf_dnode->dn_datablkshift;
+-		/*
+-		 * Previously, we were (zs_pf_blkid - blkid) ahead.  We
+-		 * want to now be double that, so read that amount again,
+-		 * plus the amount we are catching up by (i.e. the amount
+-		 * read just now).
+-		 */
+-		pf_ahead_blks = zs->zs_pf_blkid - blkid + nblks;
+-		max_blks = max_dist_blks - (pf_start - end_of_access_blkid);
+-		pf_nblks = MIN(pf_ahead_blks, max_blks);
++		if (unlikely(zs->zs_pf_dist < nbytes))
++			zs->zs_pf_dist = nbytes;
++		else if (zs->zs_pf_dist < zfetch_min_distance)
++			zs->zs_pf_dist *= 2;
++		else if (zs->zs_more)
++			zs->zs_pf_dist += zs->zs_pf_dist / 8;
++		zs->zs_more = B_FALSE;
++		if (zs->zs_pf_dist > zfetch_max_distance)
++			zs->zs_pf_dist = zfetch_max_distance;
++		pf_nblks = zs->zs_pf_dist >> zf->zf_dnode->dn_datablkshift;
+ 	} else {
+ 		pf_nblks = 0;
+ 	}
++	if (zs->zs_pf_start < end_of_access_blkid)
++		zs->zs_pf_start = end_of_access_blkid;
++	if (zs->zs_pf_end < end_of_access_blkid + pf_nblks)
++		zs->zs_pf_end = end_of_access_blkid + pf_nblks;
+ 
+-	zs->zs_pf_blkid = pf_start + pf_nblks;
+-
+-	/*
+-	 * Do the same for indirects, starting from where we stopped last,
+-	 * or where we will stop reading data blocks (and the indirects
+-	 * that point to them).
+-	 */
+-	ipf_start = MAX(zs->zs_ipf_blkid, zs->zs_pf_blkid);
+-	max_dist_blks = zfetch_max_idistance >> zf->zf_dnode->dn_datablkshift;
+ 	/*
+-	 * We want to double our distance ahead of the data prefetch
+-	 * (or reader, if we are not prefetching data).  Previously, we
+-	 * were (zs_ipf_blkid - blkid) ahead.  To double that, we read
+-	 * that amount again, plus the amount we are catching up by
+-	 * (i.e. the amount read now + the amount of data prefetched now).
++	 * Do the same for indirects, starting where we will stop reading
++	 * data blocks (and the indirects that point to them).
+ 	 */
+-	pf_ahead_blks = zs->zs_ipf_blkid - blkid + nblks + pf_nblks;
+-	max_blks = max_dist_blks - (ipf_start - zs->zs_pf_blkid);
+-	ipf_nblks = MIN(pf_ahead_blks, max_blks);
+-	zs->zs_ipf_blkid = ipf_start + ipf_nblks;
++	if (unlikely(zs->zs_ipf_dist < nbytes))
++		zs->zs_ipf_dist = nbytes;
++	else
++		zs->zs_ipf_dist *= 2;
++	if (zs->zs_ipf_dist > zfetch_max_idistance)
++		zs->zs_ipf_dist = zfetch_max_idistance;
++	pf_nblks = zs->zs_ipf_dist >> zf->zf_dnode->dn_datablkshift;
++	if (zs->zs_ipf_start < zs->zs_pf_end)
++		zs->zs_ipf_start = zs->zs_pf_end;
++	if (zs->zs_ipf_end < zs->zs_pf_end + pf_nblks)
++		zs->zs_ipf_end = zs->zs_pf_end + pf_nblks;
+ 
+ 	zs->zs_blkid = end_of_access_blkid;
+ 	/* Protect the stream from reclamation. */
+@@ -471,13 +484,13 @@ dmu_zfetch_run(zstream_t *zs, boolean_t missed, boolean_t have_lock)
+ 
+ 	mutex_enter(&zf->zf_lock);
+ 	if (zs->zs_missed) {
+-		pf_start = zs->zs_pf_blkid1;
+-		pf_end = zs->zs_pf_blkid1 = zs->zs_pf_blkid;
++		pf_start = zs->zs_pf_start;
++		pf_end = zs->zs_pf_start = zs->zs_pf_end;
+ 	} else {
+ 		pf_start = pf_end = 0;
+ 	}
+-	ipf_start = MAX(zs->zs_pf_blkid1, zs->zs_ipf_blkid1);
+-	ipf_end = zs->zs_ipf_blkid1 = zs->zs_ipf_blkid;
++	ipf_start = zs->zs_ipf_start;
++	ipf_end = zs->zs_ipf_start = zs->zs_ipf_end;
+ 	mutex_exit(&zf->zf_lock);
+ 	ASSERT3S(pf_start, <=, pf_end);
+ 	ASSERT3S(ipf_start, <=, ipf_end);
+@@ -504,12 +517,12 @@ dmu_zfetch_run(zstream_t *zs, boolean_t missed, boolean_t have_lock)
+ 	for (int64_t blk = pf_start; blk < pf_end; blk++) {
+ 		issued += dbuf_prefetch_impl(zf->zf_dnode, 0, blk,
+ 		    ZIO_PRIORITY_ASYNC_READ, ARC_FLAG_PREDICTIVE_PREFETCH,
+-		    dmu_zfetch_stream_done, zs);
++		    dmu_zfetch_done, zs);
+ 	}
+ 	for (int64_t iblk = ipf_start; iblk < ipf_end; iblk++) {
+ 		issued += dbuf_prefetch_impl(zf->zf_dnode, 1, iblk,
+ 		    ZIO_PRIORITY_ASYNC_READ, ARC_FLAG_PREDICTIVE_PREFETCH,
+-		    dmu_zfetch_stream_done, zs);
++		    dmu_zfetch_done, zs);
+ 	}
+ 
+ 	if (!have_lock)
+@@ -540,6 +553,12 @@ ZFS_MODULE_PARAM(zfs_prefetch, zfetch_, max_streams, UINT, ZMOD_RW,
+ ZFS_MODULE_PARAM(zfs_prefetch, zfetch_, min_sec_reap, UINT, ZMOD_RW,
+ 	"Min time before stream reclaim");
+ 
++ZFS_MODULE_PARAM(zfs_prefetch, zfetch_, max_sec_reap, UINT, ZMOD_RW,
++	"Max time before stream delete");
++
++ZFS_MODULE_PARAM(zfs_prefetch, zfetch_, min_distance, UINT, ZMOD_RW,
++	"Min bytes to prefetch per stream");
++
+ ZFS_MODULE_PARAM(zfs_prefetch, zfetch_, max_distance, UINT, ZMOD_RW,
+ 	"Max bytes to prefetch per stream");
+ 
+-- 
+2.34.1
+
