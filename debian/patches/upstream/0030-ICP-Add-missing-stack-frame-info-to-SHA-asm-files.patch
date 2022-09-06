@@ -1,0 +1,153 @@
+From b9d862f2dbcf377516e410a09cb66bc2338c5758 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Attila=20F=C3=BCl=C3=B6p?= <attila@fueloep.org>
+Date: Sat, 17 Apr 2021 00:11:26 +0200
+Subject: [PATCH] ICP: Add missing stack frame info to SHA asm files
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Since the assembly routines calculating SHA checksums don't use
+a standard stack layout, CFI directives are needed to unroll the
+stack.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Attila Fülöp <attila@fueloep.org>
+Closes #11733
+---
+ module/icp/asm-x86_64/sha2/sha256_impl.S | 26 ++++++++++++++++++++++++
+ module/icp/asm-x86_64/sha2/sha512_impl.S | 26 ++++++++++++++++++++++++
+ 2 files changed, 52 insertions(+)
+
+diff --git a/module/icp/asm-x86_64/sha2/sha256_impl.S b/module/icp/asm-x86_64/sha2/sha256_impl.S
+index 766b75355f..28b048d2db 100644
+--- a/module/icp/asm-x86_64/sha2/sha256_impl.S
++++ b/module/icp/asm-x86_64/sha2/sha256_impl.S
+@@ -83,12 +83,21 @@ SHA256TransformBlocks(SHA2_CTX *ctx, const void *in, size_t num)
+ #include <sys/asm_linkage.h>
+ 
+ ENTRY_NP(SHA256TransformBlocks)
++.cfi_startproc
++	movq	%rsp, %rax
++.cfi_def_cfa_register %rax
+ 	push	%rbx
++.cfi_offset	%rbx,-16
+ 	push	%rbp
++.cfi_offset	%rbp,-24
+ 	push	%r12
++.cfi_offset	%r12,-32
+ 	push	%r13
++.cfi_offset	%r13,-40
+ 	push	%r14
++.cfi_offset	%r14,-48
+ 	push	%r15
++.cfi_offset	%r15,-56
+ 	mov	%rsp,%rbp		# copy %rsp
+ 	shl	$4,%rdx		# num*16
+ 	sub	$16*4+4*8,%rsp
+@@ -99,6 +108,9 @@ ENTRY_NP(SHA256TransformBlocks)
+ 	mov	%rsi,16*4+1*8(%rsp)		# save inp, 2nd arg
+ 	mov	%rdx,16*4+2*8(%rsp)		# save end pointer, "3rd" arg
+ 	mov	%rbp,16*4+3*8(%rsp)		# save copy of %rsp
++# echo ".cfi_cfa_expression %rsp+88,deref,+56" |
++#	openssl/crypto/perlasm/x86_64-xlate.pl
++.cfi_escape	0x0f,0x06,0x77,0xd8,0x00,0x06,0x23,0x38
+ 
+ 	#.picmeup %rbp
+ 	# The .picmeup pseudo-directive, from perlasm/x86_64_xlate.pl, puts
+@@ -2026,14 +2038,28 @@ ENTRY_NP(SHA256TransformBlocks)
+ 	jb	.Lloop
+ 
+ 	mov	16*4+3*8(%rsp),%rsp
++.cfi_def_cfa	%rsp,56
+ 	pop	%r15
++.cfi_adjust_cfa_offset -8
++.cfi_restore	%r15
+ 	pop	%r14
++.cfi_adjust_cfa_offset -8
++.cfi_restore	%r14
+ 	pop	%r13
++.cfi_adjust_cfa_offset -8
++.cfi_restore	%r13
+ 	pop	%r12
++.cfi_adjust_cfa_offset -8
++.cfi_restore	%r12
+ 	pop	%rbp
++.cfi_adjust_cfa_offset -8
++.cfi_restore	%rbp
+ 	pop	%rbx
++.cfi_adjust_cfa_offset -8
++.cfi_restore	%rbx
+ 
+ 	ret
++.cfi_endproc
+ SET_SIZE(SHA256TransformBlocks)
+ 
+ .data
+diff --git a/module/icp/asm-x86_64/sha2/sha512_impl.S b/module/icp/asm-x86_64/sha2/sha512_impl.S
+index 6e37618761..746c85a985 100644
+--- a/module/icp/asm-x86_64/sha2/sha512_impl.S
++++ b/module/icp/asm-x86_64/sha2/sha512_impl.S
+@@ -84,12 +84,21 @@ SHA512TransformBlocks(SHA2_CTX *ctx, const void *in, size_t num)
+ #include <sys/asm_linkage.h>
+ 
+ ENTRY_NP(SHA512TransformBlocks)
++.cfi_startproc
++	movq	%rsp, %rax
++.cfi_def_cfa_register %rax
+ 	push	%rbx
++.cfi_offset	%rbx,-16
+ 	push	%rbp
++.cfi_offset	%rbp,-24
+ 	push	%r12
++.cfi_offset	%r12,-32
+ 	push	%r13
++.cfi_offset	%r13,-40
+ 	push	%r14
++.cfi_offset	%r14,-48
+ 	push	%r15
++.cfi_offset	%r15,-56
+ 	mov	%rsp,%rbp		# copy %rsp
+ 	shl	$4,%rdx		# num*16
+ 	sub	$16*8+4*8,%rsp
+@@ -100,6 +109,9 @@ ENTRY_NP(SHA512TransformBlocks)
+ 	mov	%rsi,16*8+1*8(%rsp)		# save inp, 2nd arg
+ 	mov	%rdx,16*8+2*8(%rsp)		# save end pointer, "3rd" arg
+ 	mov	%rbp,16*8+3*8(%rsp)		# save copy of %rsp
++# echo ".cfi_cfa_expression %rsp+152,deref,+56" |
++#	openssl/crypto/perlasm/x86_64-xlate.pl
++.cfi_escape	0x0f,0x06,0x77,0x98,0x01,0x06,0x23,0x38
+ 
+ 	#.picmeup %rbp
+ 	# The .picmeup pseudo-directive, from perlasm/x86_64_xlate.pl, puts
+@@ -2027,14 +2039,28 @@ ENTRY_NP(SHA512TransformBlocks)
+ 	jb	.Lloop
+ 
+ 	mov	16*8+3*8(%rsp),%rsp
++.cfi_def_cfa	%rsp,56
+ 	pop	%r15
++.cfi_adjust_cfa_offset -8
++.cfi_restore	%r15
+ 	pop	%r14
++.cfi_adjust_cfa_offset -8
++.cfi_restore	%r14
+ 	pop	%r13
++.cfi_adjust_cfa_offset -8
++.cfi_restore	%r13
+ 	pop	%r12
++.cfi_adjust_cfa_offset -8
++.cfi_restore	%r12
+ 	pop	%rbp
++.cfi_adjust_cfa_offset -8
++.cfi_restore	%rbp
+ 	pop	%rbx
++.cfi_adjust_cfa_offset -8
++.cfi_restore	%rbx
+ 
+ 	ret
++.cfi_endproc
+ SET_SIZE(SHA512TransformBlocks)
+ 
+ .data
+-- 
+2.34.1
+

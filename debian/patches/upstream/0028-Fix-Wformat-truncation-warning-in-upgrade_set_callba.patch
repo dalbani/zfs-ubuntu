@@ -1,0 +1,42 @@
+From d483ef37447c93dc805f6070ccf68c1ff3bdf015 Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Mon, 20 Jun 2022 21:54:42 +0000
+Subject: [PATCH] Fix -Wformat-truncation warning in upgrade_set_callback()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Extend the buffer slightly resolve the warning.
+
+    cmd/zfs/zfs_main.c: In function ‘upgrade_set_callback’:
+    cmd/zfs/zfs_main.c:2446:22: error: ‘%llu’ directive output
+    may be truncated writing between 1 and 20 bytes into a
+    region of size 16 [-Werror=format-truncation=]
+    cmd/zfs/zfs_main.c:2445:24: note: ‘snprintf’ output between
+    2 and 21 bytes into a destination of size 16
+
+Reviewed-by: Ryan Moeller <ryan@iXsystems.com>
+Reviewed-by: Alexander Motin <mav@FreeBSD.org>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #13528
+Closes #13575
+---
+ cmd/zfs/zfs_main.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/cmd/zfs/zfs_main.c b/cmd/zfs/zfs_main.c
+index 6f0c846fdd..00d5d847d0 100644
+--- a/cmd/zfs/zfs_main.c
++++ b/cmd/zfs/zfs_main.c
+@@ -2480,7 +2480,7 @@ upgrade_set_callback(zfs_handle_t *zhp, void *data)
+ 
+ 	/* upgrade */
+ 	if (version < cb->cb_version) {
+-		char verstr[16];
++		char verstr[24];
+ 		(void) snprintf(verstr, sizeof (verstr),
+ 		    "%llu", (u_longlong_t)cb->cb_version);
+ 		if (cb->cb_lastfs[0] && !same_pool(zhp, cb->cb_lastfs)) {
+-- 
+2.34.1
+

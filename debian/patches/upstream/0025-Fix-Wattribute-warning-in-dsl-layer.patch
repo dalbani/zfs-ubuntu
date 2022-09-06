@@ -1,0 +1,53 @@
+From 087f5dedd5f193907d74fd15bf437b21fc0f4f17 Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Mon, 20 Jun 2022 21:13:26 +0000
+Subject: [PATCH] Fix -Wattribute-warning in dsl layer
+
+The memcpy(), memmove(), and memset() functions have been annotated
+to perform bounds checking when using FORTIFY_SOURCE.  A warning is
+now generted when writing beyond the end of the specified field.
+
+Alternately, the new struct_group() macro could be used to create
+an anonymous union member for use by memcpy().  However, since this
+is the only place the macro would be helpful it's preferable to
+restructure the code slights to avoid the need for additional
+compatibility code when the macro does not exist.
+
+https://lore.kernel.org/lkml/20211118183807.1283332-1-keescook@chromium.org/T/
+
+Reviewed-by: Ryan Moeller <ryan@iXsystems.com>
+Reviewed-by: Alexander Motin <mav@FreeBSD.org>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #13528
+Closes #13575
+---
+ module/zfs/dsl_bookmark.c | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/module/zfs/dsl_bookmark.c b/module/zfs/dsl_bookmark.c
+index b8e3523ffc..861dd92391 100644
+--- a/module/zfs/dsl_bookmark.c
++++ b/module/zfs/dsl_bookmark.c
+@@ -347,6 +347,8 @@ dsl_bookmark_set_phys(zfs_bookmark_phys_t *zbm, dsl_dataset_t *snap)
+ 	spa_t *spa = dsl_dataset_get_spa(snap);
+ 	objset_t *mos = spa_get_dsl(spa)->dp_meta_objset;
+ 	dsl_dataset_phys_t *dsp = dsl_dataset_phys(snap);
++
++	memset(zbm, 0, sizeof (zfs_bookmark_phys_t));
+ 	zbm->zbm_guid = dsp->ds_guid;
+ 	zbm->zbm_creation_txg = dsp->ds_creation_txg;
+ 	zbm->zbm_creation_time = dsp->ds_creation_time;
+@@ -380,10 +382,6 @@ dsl_bookmark_set_phys(zfs_bookmark_phys_t *zbm, dsl_dataset_t *snap)
+ 		    &zbm->zbm_compressed_freed_before_next_snap,
+ 		    &zbm->zbm_uncompressed_freed_before_next_snap);
+ 		dsl_dataset_rele(nextds, FTAG);
+-	} else {
+-		bzero(&zbm->zbm_flags,
+-		    sizeof (zfs_bookmark_phys_t) -
+-		    offsetof(zfs_bookmark_phys_t, zbm_flags));
+ 	}
+ }
+ 
+-- 
+2.34.1
+

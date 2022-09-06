@@ -1,0 +1,58 @@
+From 035ee628cfc698c9d0f52a56565f2b70ac0dadc9 Mon Sep 17 00:00:00 2001
+From: Rich Ercolani <214141+rincebrain@users.noreply.github.com>
+Date: Thu, 4 Nov 2021 09:49:40 -0400
+Subject: [PATCH] Revert behavior of 59eab109 on not-Linux
+
+It turns out that short-circuiting the EFAULT behavior on a short read
+breaks things on FreeBSD. So until there's a nicer solution, let's
+just revert the behavior for not-Linux.
+
+Reference:
+https://reviews.freebsd.org/R10:70f51f0e474ffe1fb74cb427423a2fba3637544d
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Reviewed-by: Tony Nguyen <tony.nguyen@delphix.com>
+Reviewed-by: Brian Atkinson <batkinson@lanl.gov>
+Signed-off-by: Rich Ercolani <rincebrain@gmail.com>
+Closes #12698
+---
+ module/zfs/zfs_vnops.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/module/zfs/zfs_vnops.c b/module/zfs/zfs_vnops.c
+index b9e93791d5..918938d628 100644
+--- a/module/zfs/zfs_vnops.c
++++ b/module/zfs/zfs_vnops.c
+@@ -261,7 +261,9 @@ zfs_read(struct znode *zp, zfs_uio_t *uio, int ioflag, cred_t *cr)
+ 	}
+ 
+ 	ASSERT(zfs_uio_offset(uio) < zp->z_size);
++#if defined(__linux__)
+ 	ssize_t start_offset = zfs_uio_offset(uio);
++#endif
+ 	ssize_t n = MIN(zfs_uio_resid(uio), zp->z_size - zfs_uio_offset(uio));
+ 	ssize_t start_resid = n;
+ 
+@@ -284,13 +286,18 @@ zfs_read(struct znode *zp, zfs_uio_t *uio, int ioflag, cred_t *cr)
+ 			/* convert checksum errors into IO errors */
+ 			if (error == ECKSUM)
+ 				error = SET_ERROR(EIO);
++
++#if defined(__linux__)
+ 			/*
+ 			 * if we actually read some bytes, bubbling EFAULT
+-			 * up to become EAGAIN isn't what we want here.
++			 * up to become EAGAIN isn't what we want here...
++			 *
++			 * ...on Linux, at least. On FBSD, doing this breaks.
+ 			 */
+ 			if (error == EFAULT &&
+ 			    (zfs_uio_offset(uio) - start_offset) != 0)
+ 				error = 0;
++#endif
+ 			break;
+ 		}
+ 
+-- 
+2.34.1
+

@@ -1,0 +1,98 @@
+From d7a8c573cf4bfcced97cf9b9ac754c120c968f02 Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Mon, 20 Jun 2022 19:53:58 +0000
+Subject: [PATCH] Silence -Winfinite-recursion warning in luaD_throw()
+
+This code should be kept inline with the upstream lua version as much
+as possible.  Therefore, we simply want to silence the warning.  This
+check was enabled by default as part of -Wall in gcc 12.1.
+
+Reviewed-by: Ryan Moeller <ryan@iXsystems.com>
+Reviewed-by: Alexander Motin <mav@FreeBSD.org>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #13528
+Closes #13575
+---
+ config/always-compiler-options.m4 | 23 +++++++++++++++++++++++
+ config/zfs-build.m4               |  1 +
+ module/lua/ldo.c                  | 11 +++++++++++
+ 3 files changed, 35 insertions(+)
+
+diff --git a/config/always-compiler-options.m4 b/config/always-compiler-options.m4
+index 1df98d6dc6..5046ce0ddb 100644
+--- a/config/always-compiler-options.m4
++++ b/config/always-compiler-options.m4
+@@ -157,6 +157,29 @@ AC_DEFUN([ZFS_AC_CONFIG_ALWAYS_CC_IMPLICIT_FALLTHROUGH], [
+ 	AC_SUBST([IMPLICIT_FALLTHROUGH])
+ ])
+ 
++dnl #
++dnl # Check if cc supports -Winfinite-recursion option.
++dnl #
++AC_DEFUN([ZFS_AC_CONFIG_ALWAYS_CC_INFINITE_RECURSION], [
++	AC_MSG_CHECKING([whether $CC supports -Winfinite-recursion])
++
++	saved_flags="$CFLAGS"
++	CFLAGS="$CFLAGS -Werror -Winfinite-recursion"
++
++	AC_COMPILE_IFELSE([AC_LANG_PROGRAM([], [])], [
++		INFINITE_RECURSION=-Winfinite-recursion
++		AC_DEFINE([HAVE_INFINITE_RECURSION], 1,
++			[Define if compiler supports -Winfinite-recursion])
++		AC_MSG_RESULT([yes])
++	], [
++		INFINITE_RECURSION=
++		AC_MSG_RESULT([no])
++	])
++
++	CFLAGS="$saved_flags"
++	AC_SUBST([INFINITE_RECURSION])
++])
++
+ dnl #
+ dnl # Check if gcc supports -fno-omit-frame-pointer option.
+ dnl #
+diff --git a/config/zfs-build.m4 b/config/zfs-build.m4
+index 8abeb51ad3..8ca596ecf0 100644
+--- a/config/zfs-build.m4
++++ b/config/zfs-build.m4
+@@ -210,6 +210,7 @@ AC_DEFUN([ZFS_AC_CONFIG_ALWAYS], [
+ 	AC_SUBST(CPU_COUNT)
+ 
+ 	ZFS_AC_CONFIG_ALWAYS_CC_NO_CLOBBERED
++	ZFS_AC_CONFIG_ALWAYS_CC_INFINITE_RECURSION
+ 	ZFS_AC_CONFIG_ALWAYS_CC_IMPLICIT_FALLTHROUGH
+ 	ZFS_AC_CONFIG_ALWAYS_CC_FRAME_LARGER_THAN
+ 	ZFS_AC_CONFIG_ALWAYS_CC_NO_FORMAT_TRUNCATION
+diff --git a/module/lua/ldo.c b/module/lua/ldo.c
+index f3c3dcb4d8..821c42875e 100644
+--- a/module/lua/ldo.c
++++ b/module/lua/ldo.c
+@@ -168,6 +168,13 @@ static void seterrorobj (lua_State *L, int errcode, StkId oldtop) {
+   L->top = oldtop + 1;
+ }
+ 
++/*
++ * Silence infinite recursion warning which was added to -Wall in gcc 12.1
++ */
++#if defined(HAVE_INFINITE_RECURSION)
++#pragma GCC diagnostic push
++#pragma GCC diagnostic ignored "-Winfinite-recursion"a
++#endif
+ 
+ l_noret luaD_throw (lua_State *L, int errcode) {
+   if (L->errorJmp) {  /* thread has an error handler? */
+@@ -190,6 +197,10 @@ l_noret luaD_throw (lua_State *L, int errcode) {
+   }
+ }
+ 
++#if defined(HAVE_INFINITE_RECURSION)
++#pragma GCC diagnostic pop
++#endif
++
+ 
+ int luaD_rawrunprotected (lua_State *L, Pfunc f, void *ud) {
+   unsigned short oldnCcalls = L->nCcalls;
+-- 
+2.34.1
+

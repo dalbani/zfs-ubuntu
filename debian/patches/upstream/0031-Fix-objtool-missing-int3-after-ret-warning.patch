@@ -1,0 +1,284 @@
+From 69ad0bd769f696158ceb9dde3ff16b9775834370 Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Mon, 20 Jun 2022 23:36:21 +0000
+Subject: [PATCH] Fix objtool: missing int3 after ret warning
+
+Resolve straight-line speculation warnings reported by objtool
+for x86_64 assembly on Linux when CONFIG_SLS is set.  See the
+following LWN article for the complete details.
+
+https://lwn.net/Articles/877845/
+
+Reviewed-by: Ryan Moeller <ryan@iXsystems.com>
+Reviewed-by: Alexander Motin <mav@FreeBSD.org>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #13528
+Closes #13575
+---
+ module/icp/asm-x86_64/aes/aes_aesni.S         | 24 +++++++++----------
+ module/icp/asm-x86_64/aes/aes_amd64.S         |  4 ++--
+ .../icp/asm-x86_64/modes/aesni-gcm-x86_64.S   |  6 ++---
+ module/icp/asm-x86_64/modes/gcm_pclmulqdq.S   |  2 +-
+ module/icp/asm-x86_64/sha2/sha256_impl.S      |  2 +-
+ module/icp/asm-x86_64/sha2/sha512_impl.S      |  2 +-
+ module/icp/include/sys/ia32/asm_linkage.h     |  6 +++++
+ module/lua/setjmp/setjmp_x86_64.S             | 10 ++++++--
+ 8 files changed, 34 insertions(+), 22 deletions(-)
+
+diff --git a/module/icp/asm-x86_64/aes/aes_aesni.S b/module/icp/asm-x86_64/aes/aes_aesni.S
+index 4a80c62097..b0d9f03af2 100644
+--- a/module/icp/asm-x86_64/aes/aes_aesni.S
++++ b/module/icp/asm-x86_64/aes/aes_aesni.S
+@@ -208,7 +208,7 @@ _key_expansion_256a_local:
+ 	pxor	%xmm1, %xmm0
+ 	movups	%xmm0, (%rcx)
+ 	add	$0x10, %rcx
+-	ret
++	RET
+ 	nop
+ SET_SIZE(_key_expansion_128)
+ SET_SIZE(_key_expansion_256a)
+@@ -236,7 +236,7 @@ _key_expansion_192a_local:
+ 	shufps	$0b01001110, %xmm2, %xmm1
+ 	movups	%xmm1, 0x10(%rcx)
+ 	add	$0x20, %rcx
+-	ret
++	RET
+ SET_SIZE(_key_expansion_192a)
+ 
+ 
+@@ -257,7 +257,7 @@ _key_expansion_192b_local:
+ 
+ 	movups	%xmm0, (%rcx)
+ 	add	$0x10, %rcx
+-	ret
++	RET
+ SET_SIZE(_key_expansion_192b)
+ 
+ 
+@@ -271,7 +271,7 @@ _key_expansion_256b_local:
+ 	pxor	%xmm1, %xmm2
+ 	movups	%xmm2, (%rcx)
+ 	add	$0x10, %rcx
+-	ret
++	RET
+ SET_SIZE(_key_expansion_256b)
+ 
+ 
+@@ -376,7 +376,7 @@ rijndael_key_setup_enc_intel_local:
+ 	mov	$14, %rax			// return # rounds = 14
+ #endif
+ 	FRAME_END
+-	ret
++	RET
+ 
+ .align 4
+ .Lenc_key192:
+@@ -413,7 +413,7 @@ rijndael_key_setup_enc_intel_local:
+ 	mov	$12, %rax			// return # rounds = 12
+ #endif
+ 	FRAME_END
+-	ret
++	RET
+ 
+ .align 4
+ .Lenc_key128:
+@@ -453,13 +453,13 @@ rijndael_key_setup_enc_intel_local:
+ 	mov	$10, %rax			// return # rounds = 10
+ #endif
+ 	FRAME_END
+-	ret
++	RET
+ 
+ .Lenc_key_invalid_param:
+ #ifdef	OPENSSL_INTERFACE
+ 	mov	$-1, %rax	// user key or AES key pointer is NULL
+ 	FRAME_END
+-	ret
++	RET
+ #else
+ 	/* FALLTHROUGH */
+ #endif	/* OPENSSL_INTERFACE */
+@@ -471,7 +471,7 @@ rijndael_key_setup_enc_intel_local:
+ 	xor	%rax, %rax	// a key pointer is NULL or invalid keysize
+ #endif	/* OPENSSL_INTERFACE */
+ 	FRAME_END
+-	ret
++	RET
+ 	SET_SIZE(rijndael_key_setup_enc_intel)
+ 
+ 
+@@ -548,7 +548,7 @@ FRAME_BEGIN
+ 	// OpenSolaris: rax = # rounds (10, 12, or 14) or 0 for error
+ 	// OpenSSL: rax = 0 for OK, or non-zero for error
+ 	FRAME_END
+-	ret
++	RET
+ 	SET_SIZE(rijndael_key_setup_dec_intel)
+ 
+ 
+@@ -655,7 +655,7 @@ ENTRY_NP(aes_encrypt_intel)
+ 	aesenclast	 %KEY, %STATE		// last round
+ 	movups	%STATE, (%OUTP)			// output
+ 
+-	ret
++	RET
+ 	SET_SIZE(aes_encrypt_intel)
+ 
+ 
+@@ -738,7 +738,7 @@ ENTRY_NP(aes_decrypt_intel)
+ 	aesdeclast	%KEY, %STATE		// last round
+ 	movups	%STATE, (%OUTP)			// output
+ 
+-	ret
++	RET
+ 	SET_SIZE(aes_decrypt_intel)
+ 
+ #endif	/* lint || __lint */
+diff --git a/module/icp/asm-x86_64/aes/aes_amd64.S b/module/icp/asm-x86_64/aes/aes_amd64.S
+index 9db3a31792..931d248060 100644
+--- a/module/icp/asm-x86_64/aes/aes_amd64.S
++++ b/module/icp/asm-x86_64/aes/aes_amd64.S
+@@ -785,7 +785,7 @@ ENTRY_NP(aes_encrypt_amd64)
+ 	mov	2*8(%rsp), %rbp
+ 	mov	3*8(%rsp), %r12
+ 	add	$[4*8], %rsp
+-	ret
++	RET
+ 
+ 	SET_SIZE(aes_encrypt_amd64)
+ 
+@@ -896,7 +896,7 @@ ENTRY_NP(aes_decrypt_amd64)
+ 	mov	2*8(%rsp), %rbp
+ 	mov	3*8(%rsp), %r12
+ 	add	$[4*8], %rsp
+-	ret
++	RET
+ 
+ 	SET_SIZE(aes_decrypt_amd64)
+ #endif	/* lint || __lint */
+diff --git a/module/icp/asm-x86_64/modes/aesni-gcm-x86_64.S b/module/icp/asm-x86_64/modes/aesni-gcm-x86_64.S
+index dc71ae2c1c..70e419c2e4 100644
+--- a/module/icp/asm-x86_64/modes/aesni-gcm-x86_64.S
++++ b/module/icp/asm-x86_64/modes/aesni-gcm-x86_64.S
+@@ -1201,7 +1201,7 @@ aesni_gcm_encrypt:
+ .align	32
+ clear_fpu_regs_avx:
+ 	vzeroall
+-	ret
++	RET
+ .size	clear_fpu_regs_avx,.-clear_fpu_regs_avx
+ 
+ /*
+@@ -1219,7 +1219,7 @@ gcm_xor_avx:
+ 	movdqu  (%rsi), %xmm1
+ 	pxor    %xmm1, %xmm0
+ 	movdqu  %xmm0, (%rsi)
+-	ret
++	RET
+ .size	gcm_xor_avx,.-gcm_xor_avx
+ 
+ /*
+@@ -1236,7 +1236,7 @@ atomic_toggle_boolean_nv:
+ 	jz	1f
+ 	movl	$1, %eax
+ 1:
+-	ret
++	RET
+ .size	atomic_toggle_boolean_nv,.-atomic_toggle_boolean_nv
+ 
+ .align	64
+diff --git a/module/icp/asm-x86_64/modes/gcm_pclmulqdq.S b/module/icp/asm-x86_64/modes/gcm_pclmulqdq.S
+index 59edc4c8d5..df7f188ecd 100644
+--- a/module/icp/asm-x86_64/modes/gcm_pclmulqdq.S
++++ b/module/icp/asm-x86_64/modes/gcm_pclmulqdq.S
+@@ -244,7 +244,7 @@ ENTRY_NP(gcm_mul_pclmulqdq)
+ 	//
+ 	// Return
+ 	//
+-	ret
++	RET
+ 	SET_SIZE(gcm_mul_pclmulqdq)
+ 
+ #endif	/* lint || __lint */
+diff --git a/module/icp/asm-x86_64/sha2/sha256_impl.S b/module/icp/asm-x86_64/sha2/sha256_impl.S
+index 28b048d2db..31da7f9767 100644
+--- a/module/icp/asm-x86_64/sha2/sha256_impl.S
++++ b/module/icp/asm-x86_64/sha2/sha256_impl.S
+@@ -2058,7 +2058,7 @@ ENTRY_NP(SHA256TransformBlocks)
+ .cfi_adjust_cfa_offset -8
+ .cfi_restore	%rbx
+ 
+-	ret
++	RET
+ .cfi_endproc
+ SET_SIZE(SHA256TransformBlocks)
+ 
+diff --git a/module/icp/asm-x86_64/sha2/sha512_impl.S b/module/icp/asm-x86_64/sha2/sha512_impl.S
+index 746c85a985..c2ba18538e 100644
+--- a/module/icp/asm-x86_64/sha2/sha512_impl.S
++++ b/module/icp/asm-x86_64/sha2/sha512_impl.S
+@@ -2059,7 +2059,7 @@ ENTRY_NP(SHA512TransformBlocks)
+ .cfi_adjust_cfa_offset -8
+ .cfi_restore	%rbx
+ 
+-	ret
++	RET
+ .cfi_endproc
+ SET_SIZE(SHA512TransformBlocks)
+ 
+diff --git a/module/icp/include/sys/ia32/asm_linkage.h b/module/icp/include/sys/ia32/asm_linkage.h
+index f2dae7093b..876e21e5f1 100644
+--- a/module/icp/include/sys/ia32/asm_linkage.h
++++ b/module/icp/include/sys/ia32/asm_linkage.h
+@@ -30,6 +30,12 @@
+ #include <sys/stack.h>
+ #include <sys/trap.h>
+ 
++#if defined(__linux__) && defined(CONFIG_SLS)
++#define	RET	ret; int3
++#else
++#define	RET	ret
++#endif
++
+ #ifdef	__cplusplus
+ extern "C" {
+ #endif
+diff --git a/module/lua/setjmp/setjmp_x86_64.S b/module/lua/setjmp/setjmp_x86_64.S
+index a469cbad78..34cf2c7dce 100644
+--- a/module/lua/setjmp/setjmp_x86_64.S
++++ b/module/lua/setjmp/setjmp_x86_64.S
+@@ -35,6 +35,12 @@ x:
+ 	.size	x, [.-x]
+ 
+ 
++#if defined(__linux__) && defined(CONFIG_SLS)
++#define	RET	ret; int3
++#else
++#define	RET	ret
++#endif
++
+ /*
+  * Setjmp and longjmp implement non-local gotos using state vectors
+  * type label_t.
+@@ -52,7 +58,7 @@ x:
+ 	movq	0(%rsp), %rdx		/* return address */
+ 	movq	%rdx, 56(%rdi)		/* rip */
+ 	xorl	%eax, %eax		/* return 0 */
+-	ret
++	RET
+ 	SET_SIZE(setjmp)
+ 
+ 	ENTRY(longjmp)
+@@ -67,7 +73,7 @@ x:
+ 	movq	%rdx, 0(%rsp)
+ 	xorl	%eax, %eax
+ 	incl	%eax			/* return 1 */
+-	ret
++	RET
+ 	SET_SIZE(longjmp)
+ 
+ #ifdef __ELF__
+-- 
+2.34.1
+
