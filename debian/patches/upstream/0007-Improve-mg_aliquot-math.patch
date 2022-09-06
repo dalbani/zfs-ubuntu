@@ -1,0 +1,74 @@
+From 6e1e90d64cf26d66ff0b5a50fa294be162356ada Mon Sep 17 00:00:00 2001
+From: Alexander Motin <mav@FreeBSD.org>
+Date: Wed, 4 May 2022 14:33:42 -0400
+Subject: [PATCH] Improve mg_aliquot math
+
+When calculating mg_aliquot alike to #12046 use number of unique data
+disks in the vdev, not the total number of children vdev.  Increase
+default value of the tunable from 512KB to 1MB to compensate.
+
+Before this change each disk in striped pool was getting 512KB of
+sequential data, in 2-wide mirror -- 1MB, in 3-wide RAIDZ1 -- 768KB.
+After this change in all the cases each disk should get 1MB.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Reviewed-by: Ryan Moeller <ryan@iXsystems.com>
+Signed-off-by: Alexander Motin <mav@FreeBSD.org>
+Sponsored-By: iXsystems, Inc.
+Closes #13388
+---
+ man/man4/zfs.4        | 6 +++---
+ module/zfs/metaslab.c | 9 +++++----
+ 2 files changed, 8 insertions(+), 7 deletions(-)
+
+diff --git a/man/man4/zfs.4 b/man/man4/zfs.4
+index 5e4587285b..6921116848 100644
+--- a/man/man4/zfs.4
++++ b/man/man4/zfs.4
+@@ -213,12 +213,12 @@ For L2ARC devices less than 1GB, the amount of data
+ evicts is significant compared to the amount of restored L2ARC data.
+ In this case, do not write log blocks in L2ARC in order not to waste space.
+ .
+-.It Sy metaslab_aliquot Ns = Ns Sy 524288 Ns B Po 512kB Pc Pq ulong
++.It Sy metaslab_aliquot Ns = Ns Sy 1048576 Ns B Po 1MB Pc Pq ulong
+ Metaslab granularity, in bytes.
+ This is roughly similar to what would be referred to as the "stripe size"
+ in traditional RAID arrays.
+-In normal operation, ZFS will try to write this amount of data
+-to a top-level vdev before moving on to the next one.
++In normal operation, ZFS will try to write this amount of data to each disk
++before moving on to the next top-level vdev.
+ .
+ .It Sy metaslab_bias_enabled Ns = Ns Sy 1 Ns | Ns 0 Pq int
+ Enable metaslab group biasing based on their vdevs' over- or under-utilization
+diff --git a/module/zfs/metaslab.c b/module/zfs/metaslab.c
+index 15f545e2d1..ecc70298dc 100644
+--- a/module/zfs/metaslab.c
++++ b/module/zfs/metaslab.c
+@@ -48,10 +48,10 @@
+ /*
+  * Metaslab granularity, in bytes. This is roughly similar to what would be
+  * referred to as the "stripe size" in traditional RAID arrays. In normal
+- * operation, we will try to write this amount of data to a top-level vdev
+- * before moving on to the next one.
++ * operation, we will try to write this amount of data to each disk before
++ * moving on to the next top-level vdev.
+  */
+-unsigned long metaslab_aliquot = 512 << 10;
++static unsigned long metaslab_aliquot = 1024 * 1024;
+ 
+ /*
+  * For testing, make some blocks above a certain size be gang blocks.
+@@ -899,7 +899,8 @@ metaslab_group_activate(metaslab_group_t *mg)
+ 	if (++mg->mg_activation_count <= 0)
+ 		return;
+ 
+-	mg->mg_aliquot = metaslab_aliquot * MAX(1, mg->mg_vd->vdev_children);
++	mg->mg_aliquot = metaslab_aliquot * MAX(1,
++	    vdev_get_ndisks(mg->mg_vd) - vdev_get_nparity(mg->mg_vd));
+ 	metaslab_group_alloc_update(mg);
+ 
+ 	if ((mgprev = mc->mc_allocator[0].mca_rotor) == NULL) {
+-- 
+2.34.1
+

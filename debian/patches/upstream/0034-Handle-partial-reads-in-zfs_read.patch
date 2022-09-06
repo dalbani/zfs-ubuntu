@@ -1,0 +1,55 @@
+From 5c56591b57bd4540cdab4cd02d7c07f8544ca967 Mon Sep 17 00:00:00 2001
+From: Rich Ercolani <214141+rincebrain@users.noreply.github.com>
+Date: Mon, 20 Sep 2021 13:30:50 -0400
+Subject: [PATCH] Handle partial reads in zfs_read
+
+Currently, dmu_read_uio_dnode can read 64K of a requested 1M in one
+loop, get EFAULT back from zfs_uiomove() (because the iovec only holds
+64k), and return EFAULT, which turns into EAGAIN on the way out. EAGAIN
+gets interpreted as "I didn't read anything", the caller tries again
+without consuming the 64k we already read, and we're stuck.
+
+This apparently works on newer kernels because the caller which breaks
+on older Linux kernels by happily passing along a 1M read request and a
+64k iovec just requests 64k at a time.
+
+With this, we now won't return EFAULT if we got a partial read.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Rich Ercolani <rincebrain@gmail.com>
+Closes #12370
+Closes #12509
+Closes #12516
+---
+ module/zfs/zfs_vnops.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/module/zfs/zfs_vnops.c b/module/zfs/zfs_vnops.c
+index 1b32d38767..b9e93791d5 100644
+--- a/module/zfs/zfs_vnops.c
++++ b/module/zfs/zfs_vnops.c
+@@ -261,6 +261,7 @@ zfs_read(struct znode *zp, zfs_uio_t *uio, int ioflag, cred_t *cr)
+ 	}
+ 
+ 	ASSERT(zfs_uio_offset(uio) < zp->z_size);
++	ssize_t start_offset = zfs_uio_offset(uio);
+ 	ssize_t n = MIN(zfs_uio_resid(uio), zp->z_size - zfs_uio_offset(uio));
+ 	ssize_t start_resid = n;
+ 
+@@ -283,6 +284,13 @@ zfs_read(struct znode *zp, zfs_uio_t *uio, int ioflag, cred_t *cr)
+ 			/* convert checksum errors into IO errors */
+ 			if (error == ECKSUM)
+ 				error = SET_ERROR(EIO);
++			/*
++			 * if we actually read some bytes, bubbling EFAULT
++			 * up to become EAGAIN isn't what we want here.
++			 */
++			if (error == EFAULT &&
++			    (zfs_uio_offset(uio) - start_offset) != 0)
++				error = 0;
+ 			break;
+ 		}
+ 
+-- 
+2.34.1
+

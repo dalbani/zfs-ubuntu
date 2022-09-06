@@ -1,0 +1,97 @@
+From 15868d3ecbb102f04fcc0aa49fc4ac794fa6c63d Mon Sep 17 00:00:00 2001
+From: Alexander Motin <mav@FreeBSD.org>
+Date: Fri, 8 Jul 2022 15:53:10 -0400
+Subject: [PATCH] Fix scrub resume from newly created hole.
+
+It may happen that scan bookmark points to a block that was turned
+into a part of a big hole.  In such case dsl_scan_visitbp() may skip
+it and dsl_scan_check_resume() will not be called for it.  As result
+new scan suspend won't be possible until the end of the object, that
+may take hours if the object is a multi-terabyte ZVOL on a slow HDD
+pool, stretching TXG to all that time, creating all sorts of problems.
+
+This patch changes the resume condition to any greater or equal block,
+so even if we miss the bookmarked block, the next one we find will
+delete the bookmark, allowing new suspend.
+
+Signed-off-by: Alexander Motin <mav@FreeBSD.org>
+Sponsored-By: iXsystems, Inc.
+---
+ include/sys/zio.h     |  2 ++
+ module/zfs/dsl_scan.c |  9 ++++-----
+ module/zfs/zio.c      | 18 +++++++++++++++++-
+ 3 files changed, 23 insertions(+), 6 deletions(-)
+
+diff --git a/include/sys/zio.h b/include/sys/zio.h
+index e46455ea99..5bb7120834 100644
+--- a/include/sys/zio.h
++++ b/include/sys/zio.h
+@@ -699,6 +699,8 @@ extern void spa_handle_ignored_writes(spa_t *spa);
+ /* zbookmark_phys functions */
+ boolean_t zbookmark_subtree_completed(const struct dnode_phys *dnp,
+     const zbookmark_phys_t *subtree_root, const zbookmark_phys_t *last_block);
++boolean_t zbookmark_subtree_tbd(const struct dnode_phys *dnp,
++    const zbookmark_phys_t *subtree_root, const zbookmark_phys_t *last_block);
+ int zbookmark_compare(uint16_t dbss1, uint8_t ibs1, uint16_t dbss2,
+     uint8_t ibs2, const zbookmark_phys_t *zb1, const zbookmark_phys_t *zb2);
+ 
+diff --git a/module/zfs/dsl_scan.c b/module/zfs/dsl_scan.c
+index d4e46f6bb9..603fe84ecd 100644
+--- a/module/zfs/dsl_scan.c
++++ b/module/zfs/dsl_scan.c
+@@ -1795,12 +1795,11 @@ dsl_scan_check_resume(dsl_scan_t *scn, const dnode_phys_t *dnp,
+ 
+ 		/*
+ 		 * If we found the block we're trying to resume from, or
+-		 * we went past it to a different object, zero it out to
+-		 * indicate that it's OK to start checking for suspending
+-		 * again.
++		 * we went past it, zero it out to indicate that it's OK
++		 * to start checking for suspending again.
+ 		 */
+-		if (bcmp(zb, &scn->scn_phys.scn_bookmark, sizeof (*zb)) == 0 ||
+-		    zb->zb_object > scn->scn_phys.scn_bookmark.zb_object) {
++		if (zbookmark_subtree_tbd(dnp, zb,
++		    &scn->scn_phys.scn_bookmark)) {
+ 			dprintf("resuming at %llx/%llx/%llx/%llx\n",
+ 			    (longlong_t)zb->zb_objset,
+ 			    (longlong_t)zb->zb_object,
+diff --git a/module/zfs/zio.c b/module/zfs/zio.c
+index 04b5d121e1..c1fd2de2e5 100644
+--- a/module/zfs/zio.c
++++ b/module/zfs/zio.c
+@@ -5008,7 +5008,7 @@ zbookmark_subtree_completed(const dnode_phys_t *dnp,
+ {
+ 	zbookmark_phys_t mod_zb = *subtree_root;
+ 	mod_zb.zb_blkid++;
+-	ASSERT(last_block->zb_level == 0);
++	ASSERT0(last_block->zb_level);
+ 
+ 	/* The objset_phys_t isn't before anything. */
+ 	if (dnp == NULL)
+@@ -5034,6 +5034,22 @@ zbookmark_subtree_completed(const dnode_phys_t *dnp,
+ 	    last_block) <= 0);
+ }
+ 
++/*
++ * This function is similar to zbookmark_subtree_completed(), but returns true
++ * if subtree_root is equal or ahead of last_block, i.e. still to be done.
++ */
++boolean_t
++zbookmark_subtree_tbd(const dnode_phys_t *dnp,
++    const zbookmark_phys_t *subtree_root, const zbookmark_phys_t *last_block)
++{
++	ASSERT0(last_block->zb_level);
++	if (dnp == NULL)
++		return (B_FALSE);
++	return (zbookmark_compare(dnp->dn_datablkszsec, dnp->dn_indblkshift,
++	    1ULL << (DNODE_BLOCK_SHIFT - SPA_MINBLOCKSHIFT), 0, subtree_root,
++	    last_block) >= 0);
++}
++
+ EXPORT_SYMBOL(zio_type_name);
+ EXPORT_SYMBOL(zio_buf_alloc);
+ EXPORT_SYMBOL(zio_data_buf_alloc);
+-- 
+2.34.1
+

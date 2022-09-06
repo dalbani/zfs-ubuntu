@@ -1,0 +1,39 @@
+From 17512aba0c33f73b74e5bd10f11e6d41c10f709f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Tue, 28 Jun 2022 23:31:55 +0200
+Subject: [PATCH] module: lua: ldo: fix pragma name
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+/home/nabijaczleweli/store/code/zfs/module/lua/ldo.c:175:32: warning:
+unknown option after ‘#pragma GCC diagnostic’ kind [-Wpragmas]
+  175 | #pragma GCC diagnostic ignored "-Winfinite-recursion"a
+      |                                ^~~~~~~~~~~~~~~~~~~~~~
+
+Fixes: a6e8113fed8a508ffda13cf1c4d8da99a4e8133a ("Silence
+-Winfinite-recursion warning in luaD_throw()")
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #13348
+---
+ module/lua/ldo.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/module/lua/ldo.c b/module/lua/ldo.c
+index 821c42875e..08a952007d 100644
+--- a/module/lua/ldo.c
++++ b/module/lua/ldo.c
+@@ -173,7 +173,7 @@ static void seterrorobj (lua_State *L, int errcode, StkId oldtop) {
+  */
+ #if defined(HAVE_INFINITE_RECURSION)
+ #pragma GCC diagnostic push
+-#pragma GCC diagnostic ignored "-Winfinite-recursion"a
++#pragma GCC diagnostic ignored "-Winfinite-recursion"
+ #endif
+ 
+ l_noret luaD_throw (lua_State *L, int errcode) {
+-- 
+2.34.1
+

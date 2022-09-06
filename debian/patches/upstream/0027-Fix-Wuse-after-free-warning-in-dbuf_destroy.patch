@@ -1,0 +1,49 @@
+From 60f2cfd24f311ce003c04b569ad269992b4385a0 Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Mon, 20 Jun 2022 21:35:38 +0000
+Subject: [PATCH] Fix -Wuse-after-free warning in dbuf_destroy()
+
+Move the use of the db pointer after it is freed.  It's only used as
+a tag so a dereference would never occur, but there's no reason we
+can't invert the order to resolve the warning.
+
+    module/zfs/dbuf.c: In function 'dbuf_destroy':
+    module/zfs/dbuf.c:2953:17: error:
+    pointer 'db' may be used after 'free' [-Werror=use-after-free]
+
+Reviewed-by: Ryan Moeller <ryan@iXsystems.com>
+Reviewed-by: Alexander Motin <mav@FreeBSD.org>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #13528
+Closes #13575
+---
+ module/zfs/dbuf.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/module/zfs/dbuf.c b/module/zfs/dbuf.c
+index db9769b05d..e687d96501 100644
+--- a/module/zfs/dbuf.c
++++ b/module/zfs/dbuf.c
+@@ -2878,9 +2878,6 @@ dbuf_destroy(dmu_buf_impl_t *db)
+ 	ASSERT3U(db->db_caching_status, ==, DB_NO_CACHE);
+ 	ASSERT(!multilist_link_active(&db->db_cache_link));
+ 
+-	kmem_cache_free(dbuf_kmem_cache, db);
+-	arc_space_return(sizeof (dmu_buf_impl_t), ARC_SPACE_DBUF);
+-
+ 	/*
+ 	 * If this dbuf is referenced from an indirect dbuf,
+ 	 * decrement the ref count on the indirect dbuf.
+@@ -2889,6 +2886,9 @@ dbuf_destroy(dmu_buf_impl_t *db)
+ 		mutex_enter(&parent->db_mtx);
+ 		dbuf_rele_and_unlock(parent, db, B_TRUE);
+ 	}
++
++	kmem_cache_free(dbuf_kmem_cache, db);
++	arc_space_return(sizeof (dmu_buf_impl_t), ARC_SPACE_DBUF);
+ }
+ 
+ /*
+-- 
+2.34.1
+

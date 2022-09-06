@@ -1,0 +1,42 @@
+From 6a8117302613a1cc47741036dbb18a553a534ccf Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Mon, 20 Jun 2022 21:32:03 +0000
+Subject: [PATCH] Fix -Wuse-after-free warning in
+ dbuf_issue_final_prefetch_done()
+
+Move the use of the private pointer after it is freed.  It's only
+used as a tag so a dereference would never occur, but there's no
+harm in inverting the order to resolve the warning.
+
+    module/zfs/dbuf.c: In function 'dbuf_issue_final_prefetch_done':
+    module/zfs/dbuf.c:3204:17: error:
+    pointer 'private' may be used after 'free' [-Werror=use-after-free]
+
+Reviewed-by: Ryan Moeller <ryan@iXsystems.com>
+Reviewed-by: Alexander Motin <mav@FreeBSD.org>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #13528
+Closes #13575
+---
+ module/zfs/dbuf.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/module/zfs/dbuf.c b/module/zfs/dbuf.c
+index 12c98b440f..db9769b05d 100644
+--- a/module/zfs/dbuf.c
++++ b/module/zfs/dbuf.c
+@@ -3136,9 +3136,10 @@ dbuf_issue_final_prefetch_done(zio_t *zio, const zbookmark_phys_t *zb,
+ 	(void) zio, (void) zb, (void) iobp;
+ 	dbuf_prefetch_arg_t *dpa = private;
+ 
+-	dbuf_prefetch_fini(dpa, B_TRUE);
+ 	if (abuf != NULL)
+ 		arc_buf_destroy(abuf, private);
++
++	dbuf_prefetch_fini(dpa, B_TRUE);
+ }
+ 
+ /*
+-- 
+2.34.1
+

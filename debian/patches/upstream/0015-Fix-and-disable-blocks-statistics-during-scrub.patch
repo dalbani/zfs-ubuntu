@@ -1,0 +1,200 @@
+From 4b8f16072d9cac21eb2080a89a3f8630f819b039 Mon Sep 17 00:00:00 2001
+From: Alexander Motin <mav@FreeBSD.org>
+Date: Tue, 28 Jun 2022 14:23:31 -0400
+Subject: [PATCH] Fix and disable blocks statistics during scrub
+
+Block statistics calculation during scrub I/O issue in case of sorted
+scrub accounted ditto blocks several times.  Embedded blocks on other
+side were not accounted at all.  This change moves the accounting from
+issue to scan stage, that fixes both problems and also allows to avoid
+pool-wide locking and the lock contention it created.
+
+Since this statistics is quite specific and is not even exposed now
+anywhere, disable its calculation by default to not waste CPU time.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Alexander Motin <mav@FreeBSD.org>
+Sponsored-By: iXsystems, Inc.
+Closes #13579
+---
+ include/sys/dsl_pool.h |  1 -
+ module/zfs/dsl_pool.c  |  4 +--
+ module/zfs/dsl_scan.c  | 59 +++++++++++++++++++++---------------------
+ 3 files changed, 30 insertions(+), 34 deletions(-)
+
+diff --git a/include/sys/dsl_pool.h b/include/sys/dsl_pool.h
+index 58fcae65db..e5eb9a20e9 100644
+--- a/include/sys/dsl_pool.h
++++ b/include/sys/dsl_pool.h
+@@ -82,7 +82,6 @@ typedef struct zfs_blkstat {
+ 
+ typedef struct zfs_all_blkstats {
+ 	zfs_blkstat_t	zab_type[DN_MAX_LEVELS + 1][DMU_OT_TOTAL + 1];
+-	kmutex_t	zab_lock;
+ } zfs_all_blkstats_t;
+ 
+ 
+diff --git a/module/zfs/dsl_pool.c b/module/zfs/dsl_pool.c
+index af7fa5af4e..456ef5372e 100644
+--- a/module/zfs/dsl_pool.c
++++ b/module/zfs/dsl_pool.c
+@@ -418,10 +418,8 @@ dsl_pool_close(dsl_pool_t *dp)
+ 	cv_destroy(&dp->dp_spaceavail_cv);
+ 	taskq_destroy(dp->dp_unlinked_drain_taskq);
+ 	taskq_destroy(dp->dp_zrele_taskq);
+-	if (dp->dp_blkstats != NULL) {
+-		mutex_destroy(&dp->dp_blkstats->zab_lock);
++	if (dp->dp_blkstats != NULL)
+ 		vmem_free(dp->dp_blkstats, sizeof (zfs_all_blkstats_t));
+-	}
+ 	kmem_free(dp, sizeof (dsl_pool_t));
+ }
+ 
+diff --git a/module/zfs/dsl_scan.c b/module/zfs/dsl_scan.c
+index cd1af6f95d..d4e46f6bb9 100644
+--- a/module/zfs/dsl_scan.c
++++ b/module/zfs/dsl_scan.c
+@@ -129,6 +129,7 @@ static void scan_ds_queue_sync(dsl_scan_t *scn, dmu_tx_t *tx);
+ static uint64_t dsl_scan_count_data_disks(vdev_t *vd);
+ 
+ extern int zfs_vdev_async_write_active_min_dirty_percent;
++static int zfs_scan_blkstats = 0;
+ 
+ /*
+  * By default zfs will check to ensure it is not over the hard memory
+@@ -788,13 +789,19 @@ dsl_scan_setup_sync(void *arg, dmu_tx_t *tx)
+ 
+ 	/* back to the generic stuff */
+ 
+-	if (dp->dp_blkstats == NULL) {
+-		dp->dp_blkstats =
+-		    vmem_alloc(sizeof (zfs_all_blkstats_t), KM_SLEEP);
+-		mutex_init(&dp->dp_blkstats->zab_lock, NULL,
+-		    MUTEX_DEFAULT, NULL);
++	if (zfs_scan_blkstats) {
++		if (dp->dp_blkstats == NULL) {
++			dp->dp_blkstats =
++			    vmem_alloc(sizeof (zfs_all_blkstats_t), KM_SLEEP);
++		}
++		memset(&dp->dp_blkstats->zab_type, 0,
++		    sizeof (dp->dp_blkstats->zab_type));
++	} else {
++		if (dp->dp_blkstats) {
++			vmem_free(dp->dp_blkstats, sizeof (zfs_all_blkstats_t));
++			dp->dp_blkstats = NULL;
++		}
+ 	}
+-	bzero(&dp->dp_blkstats->zab_type, sizeof (dp->dp_blkstats->zab_type));
+ 
+ 	if (spa_version(spa) < SPA_VERSION_DSL_SCRUB)
+ 		ot = DMU_OT_ZAP_OTHER;
+@@ -3779,10 +3786,8 @@ dsl_scan_sync(dsl_pool_t *dp, dmu_tx_t *tx)
+ }
+ 
+ static void
+-count_block(dsl_scan_t *scn, zfs_all_blkstats_t *zab, const blkptr_t *bp)
++count_block_issued(spa_t *spa, const blkptr_t *bp, boolean_t all)
+ {
+-	int i;
+-
+ 	/*
+ 	 * Don't count embedded bp's, since we already did the work of
+ 	 * scanning these when we scanned the containing block.
+@@ -3797,18 +3802,13 @@ count_block(dsl_scan_t *scn, zfs_all_blkstats_t *zab, const blkptr_t *bp)
+ 	 * zio code will only try the first one unless there is an issue.
+ 	 * Therefore, we should only count the first DVA for these IOs.
+ 	 */
+-	if (scn->scn_is_sorted) {
+-		atomic_add_64(&scn->scn_dp->dp_spa->spa_scan_pass_issued,
+-		    DVA_GET_ASIZE(&bp->blk_dva[0]));
+-	} else {
+-		spa_t *spa = scn->scn_dp->dp_spa;
+-
+-		for (i = 0; i < BP_GET_NDVAS(bp); i++) {
+-			atomic_add_64(&spa->spa_scan_pass_issued,
+-			    DVA_GET_ASIZE(&bp->blk_dva[i]));
+-		}
+-	}
++	atomic_add_64(&spa->spa_scan_pass_issued,
++	    all ? BP_GET_ASIZE(bp) : DVA_GET_ASIZE(&bp->blk_dva[0]));
++}
+ 
++static void
++count_block(zfs_all_blkstats_t *zab, const blkptr_t *bp)
++{
+ 	/*
+ 	 * If we resume after a reboot, zab will be NULL; don't record
+ 	 * incomplete stats in that case.
+@@ -3816,9 +3816,7 @@ count_block(dsl_scan_t *scn, zfs_all_blkstats_t *zab, const blkptr_t *bp)
+ 	if (zab == NULL)
+ 		return;
+ 
+-	mutex_enter(&zab->zab_lock);
+-
+-	for (i = 0; i < 4; i++) {
++	for (int i = 0; i < 4; i++) {
+ 		int l = (i < 2) ? BP_GET_LEVEL(bp) : DN_MAX_LEVELS;
+ 		int t = (i & 1) ? BP_GET_TYPE(bp) : DMU_OT_TOTAL;
+ 
+@@ -3853,8 +3851,6 @@ count_block(dsl_scan_t *scn, zfs_all_blkstats_t *zab, const blkptr_t *bp)
+ 			break;
+ 		}
+ 	}
+-
+-	mutex_exit(&zab->zab_lock);
+ }
+ 
+ static void
+@@ -3952,10 +3948,10 @@ dsl_scan_scrub_cb(dsl_pool_t *dp,
+ 	boolean_t needs_io = B_FALSE;
+ 	int zio_flags = ZIO_FLAG_SCAN_THREAD | ZIO_FLAG_RAW | ZIO_FLAG_CANFAIL;
+ 
+-
++	count_block(dp->dp_blkstats, bp);
+ 	if (phys_birth <= scn->scn_phys.scn_min_txg ||
+ 	    phys_birth >= scn->scn_phys.scn_max_txg) {
+-		count_block(scn, dp->dp_blkstats, bp);
++		count_block_issued(spa, bp, B_TRUE);
+ 		return (0);
+ 	}
+ 
+@@ -3996,7 +3992,7 @@ dsl_scan_scrub_cb(dsl_pool_t *dp,
+ 	if (needs_io && !zfs_no_scrub_io) {
+ 		dsl_scan_enqueue(dp, bp, zio_flags, zb);
+ 	} else {
+-		count_block(scn, dp->dp_blkstats, bp);
++		count_block_issued(spa, bp, B_TRUE);
+ 	}
+ 
+ 	/* do not relocate this block */
+@@ -4070,7 +4066,7 @@ scan_exec_io(dsl_pool_t *dp, const blkptr_t *bp, int zio_flags,
+ 	}
+ 
+ 	ASSERT(pio != NULL);
+-	count_block(scn, dp->dp_blkstats, bp);
++	count_block_issued(spa, bp, queue == NULL);
+ 	zio_nowait(zio_read(pio, spa, bp, data, size, dsl_scan_scrub_done,
+ 	    queue, ZIO_PRIORITY_SCRUB, zio_flags, zb));
+ }
+@@ -4355,7 +4351,7 @@ dsl_scan_freed_dva(spa_t *spa, const blkptr_t *bp, int dva_i)
+ 
+ 		/* count the block as though we issued it */
+ 		sio2bp(sio, &tmpbp);
+-		count_block(scn, dp->dp_blkstats, &tmpbp);
++		count_block_issued(spa, &tmpbp, B_FALSE);
+ 
+ 		sio_free(sio);
+ 	}
+@@ -4447,6 +4443,9 @@ ZFS_MODULE_PARAM(zfs, zfs_, max_async_dedup_frees, ULONG, ZMOD_RW,
+ ZFS_MODULE_PARAM(zfs, zfs_, free_bpobj_enabled, INT, ZMOD_RW,
+ 	"Enable processing of the free_bpobj");
+ 
++ZFS_MODULE_PARAM(zfs, zfs_, scan_blkstats, INT, ZMOD_RW,
++	"Enable block statistics calculation during scrub");
++
+ ZFS_MODULE_PARAM(zfs, zfs_, scan_mem_lim_fact, INT, ZMOD_RW,
+ 	"Fraction of RAM for scan hard limit");
+ 
+-- 
+2.34.1
+
