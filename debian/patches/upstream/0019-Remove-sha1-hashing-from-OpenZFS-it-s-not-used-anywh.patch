@@ -1,0 +1,3802 @@
+From 4b0977027bae95ab916002e372f339f9ad3902a3 Mon Sep 17 00:00:00 2001
+From: Tino Reichardt <github@mcmilk.de>
+Date: Mon, 3 Jan 2022 17:43:11 +0100
+Subject: [PATCH] Remove sha1 hashing from OpenZFS, it's not used anywhere.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Reviewed-by: Attila Fülöp <attila@fueloep.org>
+Signed-off-by: Tino Reichardt <milky-zfs@mcmilk.de>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #12895
+Closes #12902
+Signed-off-by: Rich Ercolani <rincebrain@gmail.com>
+---
+ include/sys/crypto/icp.h                 |    3 -
+ lib/libicp/Makefile.am                   |    3 -
+ module/icp/Makefile.in                   |    6 -
+ module/icp/algs/sha1/sha1.c              |  835 -------------
+ module/icp/asm-x86_64/sha1/sha1-x86_64.S | 1353 ----------------------
+ module/icp/illumos-crypto.c              |    2 -
+ module/icp/include/sha1/sha1.h           |   61 -
+ module/icp/include/sha1/sha1_consts.h    |   65 --
+ module/icp/include/sha1/sha1_impl.h      |   73 --
+ module/icp/io/sha1_mod.c                 | 1230 --------------------
+ 10 files changed, 3631 deletions(-)
+ delete mode 100644 module/icp/algs/sha1/sha1.c
+ delete mode 100644 module/icp/asm-x86_64/sha1/sha1-x86_64.S
+ delete mode 100644 module/icp/include/sha1/sha1.h
+ delete mode 100644 module/icp/include/sha1/sha1_consts.h
+ delete mode 100644 module/icp/include/sha1/sha1_impl.h
+ delete mode 100644 module/icp/io/sha1_mod.c
+
+diff --git a/include/sys/crypto/icp.h b/include/sys/crypto/icp.h
+index 4609e3a1da..f8fd285a1e 100644
+--- a/include/sys/crypto/icp.h
++++ b/include/sys/crypto/icp.h
+@@ -32,9 +32,6 @@ int aes_mod_fini(void);
+ int edonr_mod_init(void);
+ int edonr_mod_fini(void);
+ 
+-int sha1_mod_init(void);
+-int sha1_mod_fini(void);
+-
+ int sha2_mod_init(void);
+ int sha2_mod_fini(void);
+ 
+diff --git a/lib/libicp/Makefile.am b/lib/libicp/Makefile.am
+index 0b87a988c0..e4a9ee8621 100644
+--- a/lib/libicp/Makefile.am
++++ b/lib/libicp/Makefile.am
+@@ -17,7 +17,6 @@ ASM_SOURCES_AS = \
+ 	asm-x86_64/modes/gcm_pclmulqdq.S \
+ 	asm-x86_64/modes/aesni-gcm-x86_64.S \
+ 	asm-x86_64/modes/ghash-x86_64.S \
+-	asm-x86_64/sha1/sha1-x86_64.S \
+ 	asm-x86_64/sha2/sha256_impl.S \
+ 	asm-x86_64/sha2/sha512_impl.S
+ else
+@@ -46,7 +45,6 @@ KERNEL_C = \
+ 	algs/modes/ctr.c \
+ 	algs/modes/ccm.c \
+ 	algs/modes/ecb.c \
+-	algs/sha1/sha1.c \
+ 	algs/sha2/sha2.c \
+ 	algs/skein/skein.c \
+ 	algs/skein/skein_block.c \
+@@ -54,7 +52,6 @@ KERNEL_C = \
+ 	illumos-crypto.c \
+ 	io/aes.c \
+ 	io/edonr_mod.c \
+-	io/sha1_mod.c \
+ 	io/sha2_mod.c \
+ 	io/skein_mod.c \
+ 	os/modhash.c \
+diff --git a/module/icp/Makefile.in b/module/icp/Makefile.in
+index 858c5a610c..54b5df1a19 100644
+--- a/module/icp/Makefile.in
++++ b/module/icp/Makefile.in
+@@ -27,7 +27,6 @@ $(MODULE)-objs += core/kcf_prov_lib.o
+ $(MODULE)-objs += spi/kcf_spi.o
+ $(MODULE)-objs += io/aes.o
+ $(MODULE)-objs += io/edonr_mod.o
+-$(MODULE)-objs += io/sha1_mod.o
+ $(MODULE)-objs += io/sha2_mod.o
+ $(MODULE)-objs += io/skein_mod.o
+ $(MODULE)-objs += os/modhash.o
+@@ -43,7 +42,6 @@ $(MODULE)-objs += algs/aes/aes_impl_generic.o
+ $(MODULE)-objs += algs/aes/aes_impl.o
+ $(MODULE)-objs += algs/aes/aes_modes.o
+ $(MODULE)-objs += algs/edonr/edonr.o
+-$(MODULE)-objs += algs/sha1/sha1.o
+ $(MODULE)-objs += algs/sha2/sha2.o
+ $(MODULE)-objs += algs/skein/skein.o
+ $(MODULE)-objs += algs/skein/skein_block.o
+@@ -55,7 +53,6 @@ $(MODULE)-$(CONFIG_X86_64) += asm-x86_64/aes/aes_aesni.o
+ $(MODULE)-$(CONFIG_X86_64) += asm-x86_64/modes/gcm_pclmulqdq.o
+ $(MODULE)-$(CONFIG_X86_64) += asm-x86_64/modes/aesni-gcm-x86_64.o
+ $(MODULE)-$(CONFIG_X86_64) += asm-x86_64/modes/ghash-x86_64.o
+-$(MODULE)-$(CONFIG_X86_64) += asm-x86_64/sha1/sha1-x86_64.o
+ $(MODULE)-$(CONFIG_X86_64) += asm-x86_64/sha2/sha256_impl.o
+ $(MODULE)-$(CONFIG_X86_64) += asm-x86_64/sha2/sha512_impl.o
+ 
+@@ -72,7 +69,6 @@ OBJECT_FILES_NON_STANDARD_ghash-x86_64.o := y
+ # Suppress objtool "unsupported stack pointer realignment" warnings. We are
+ # not using a DRAP register while aligning the stack to a 64 byte boundary.
+ # See #6950 for the reasoning.
+-OBJECT_FILES_NON_STANDARD_sha1-x86_64.o := y
+ OBJECT_FILES_NON_STANDARD_sha256_impl.o := y
+ OBJECT_FILES_NON_STANDARD_sha512_impl.o := y
+ 
+@@ -86,13 +82,11 @@ ICP_DIRS = \
+ 	algs/aes \
+ 	algs/edonr \
+ 	algs/modes \
+-	algs/sha1 \
+ 	algs/sha2 \
+ 	algs/skein \
+ 	asm-x86_64 \
+ 	asm-x86_64/aes \
+ 	asm-x86_64/modes \
+-	asm-x86_64/sha1 \
+ 	asm-x86_64/sha2 \
+ 	asm-i386 \
+ 	asm-generic
+diff --git a/module/icp/algs/sha1/sha1.c b/module/icp/algs/sha1/sha1.c
+deleted file mode 100644
+index da34222c8f..0000000000
+--- a/module/icp/algs/sha1/sha1.c
++++ /dev/null
+@@ -1,835 +0,0 @@
+-/*
+- * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
+- * Use is subject to license terms.
+- */
+-
+-/*
+- * The basic framework for this code came from the reference
+- * implementation for MD5.  That implementation is Copyright (C)
+- * 1991-2, RSA Data Security, Inc. Created 1991. All rights reserved.
+- *
+- * License to copy and use this software is granted provided that it
+- * is identified as the "RSA Data Security, Inc. MD5 Message-Digest
+- * Algorithm" in all material mentioning or referencing this software
+- * or this function.
+- *
+- * License is also granted to make and use derivative works provided
+- * that such works are identified as "derived from the RSA Data
+- * Security, Inc. MD5 Message-Digest Algorithm" in all material
+- * mentioning or referencing the derived work.
+- *
+- * RSA Data Security, Inc. makes no representations concerning either
+- * the merchantability of this software or the suitability of this
+- * software for any particular purpose. It is provided "as is"
+- * without express or implied warranty of any kind.
+- *
+- * These notices must be retained in any copies of any part of this
+- * documentation and/or software.
+- *
+- * NOTE: Cleaned-up and optimized, version of SHA1, based on the FIPS 180-1
+- * standard, available at http://www.itl.nist.gov/fipspubs/fip180-1.htm
+- * Not as fast as one would like -- further optimizations are encouraged
+- * and appreciated.
+- */
+-
+-#include <sys/zfs_context.h>
+-#include <sha1/sha1.h>
+-#include <sha1/sha1_consts.h>
+-
+-#ifdef _LITTLE_ENDIAN
+-#include <sys/byteorder.h>
+-#define	HAVE_HTONL
+-#endif
+-
+-#define	_RESTRICT_KYWD
+-
+-static void Encode(uint8_t *, const uint32_t *, size_t);
+-
+-#if	defined(__sparc)
+-
+-#define	SHA1_TRANSFORM(ctx, in) \
+-	SHA1Transform((ctx)->state[0], (ctx)->state[1], (ctx)->state[2], \
+-		(ctx)->state[3], (ctx)->state[4], (ctx), (in))
+-
+-static void SHA1Transform(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t,
+-	SHA1_CTX *, const uint8_t *);
+-
+-#elif	defined(__amd64)
+-
+-#define	SHA1_TRANSFORM(ctx, in) sha1_block_data_order((ctx), (in), 1)
+-#define	SHA1_TRANSFORM_BLOCKS(ctx, in, num) sha1_block_data_order((ctx), \
+-		(in), (num))
+-
+-void sha1_block_data_order(SHA1_CTX *ctx, const void *inpp, size_t num_blocks);
+-
+-#else
+-
+-#define	SHA1_TRANSFORM(ctx, in) SHA1Transform((ctx), (in))
+-
+-static void SHA1Transform(SHA1_CTX *, const uint8_t *);
+-
+-#endif
+-
+-
+-static uint8_t PADDING[64] = { 0x80, /* all zeros */ };
+-
+-/*
+- * F, G, and H are the basic SHA1 functions.
+- */
+-#define	F(b, c, d)	(((b) & (c)) | ((~b) & (d)))
+-#define	G(b, c, d)	((b) ^ (c) ^ (d))
+-#define	H(b, c, d)	(((b) & (c)) | (((b)|(c)) & (d)))
+-
+-/*
+- * SHA1Init()
+- *
+- * purpose: initializes the sha1 context and begins and sha1 digest operation
+- *   input: SHA1_CTX *	: the context to initializes.
+- *  output: void
+- */
+-
+-void
+-SHA1Init(SHA1_CTX *ctx)
+-{
+-	ctx->count[0] = ctx->count[1] = 0;
+-
+-	/*
+-	 * load magic initialization constants. Tell lint
+-	 * that these constants are unsigned by using U.
+-	 */
+-
+-	ctx->state[0] = 0x67452301U;
+-	ctx->state[1] = 0xefcdab89U;
+-	ctx->state[2] = 0x98badcfeU;
+-	ctx->state[3] = 0x10325476U;
+-	ctx->state[4] = 0xc3d2e1f0U;
+-}
+-
+-void
+-SHA1Update(SHA1_CTX *ctx, const void *inptr, size_t input_len)
+-{
+-	uint32_t i, buf_index, buf_len;
+-	const uint8_t *input = inptr;
+-#if defined(__amd64)
+-	uint32_t	block_count;
+-#endif	/* __amd64 */
+-
+-	/* check for noop */
+-	if (input_len == 0)
+-		return;
+-
+-	/* compute number of bytes mod 64 */
+-	buf_index = (ctx->count[1] >> 3) & 0x3F;
+-
+-	/* update number of bits */
+-	if ((ctx->count[1] += (input_len << 3)) < (input_len << 3))
+-		ctx->count[0]++;
+-
+-	ctx->count[0] += (input_len >> 29);
+-
+-	buf_len = 64 - buf_index;
+-
+-	/* transform as many times as possible */
+-	i = 0;
+-	if (input_len >= buf_len) {
+-
+-		/*
+-		 * general optimization:
+-		 *
+-		 * only do initial bcopy() and SHA1Transform() if
+-		 * buf_index != 0.  if buf_index == 0, we're just
+-		 * wasting our time doing the bcopy() since there
+-		 * wasn't any data left over from a previous call to
+-		 * SHA1Update().
+-		 */
+-
+-		if (buf_index) {
+-			bcopy(input, &ctx->buf_un.buf8[buf_index], buf_len);
+-			SHA1_TRANSFORM(ctx, ctx->buf_un.buf8);
+-			i = buf_len;
+-		}
+-
+-#if !defined(__amd64)
+-		for (; i + 63 < input_len; i += 64)
+-			SHA1_TRANSFORM(ctx, &input[i]);
+-#else
+-		block_count = (input_len - i) >> 6;
+-		if (block_count > 0) {
+-			SHA1_TRANSFORM_BLOCKS(ctx, &input[i], block_count);
+-			i += block_count << 6;
+-		}
+-#endif	/* !__amd64 */
+-
+-		/*
+-		 * general optimization:
+-		 *
+-		 * if i and input_len are the same, return now instead
+-		 * of calling bcopy(), since the bcopy() in this case
+-		 * will be an expensive nop.
+-		 */
+-
+-		if (input_len == i)
+-			return;
+-
+-		buf_index = 0;
+-	}
+-
+-	/* buffer remaining input */
+-	bcopy(&input[i], &ctx->buf_un.buf8[buf_index], input_len - i);
+-}
+-
+-/*
+- * SHA1Final()
+- *
+- * purpose: ends an sha1 digest operation, finalizing the message digest and
+- *          zeroing the context.
+- *   input: uchar_t *	: A buffer to store the digest.
+- *			: The function actually uses void* because many
+- *			: callers pass things other than uchar_t here.
+- *          SHA1_CTX *  : the context to finalize, save, and zero
+- *  output: void
+- */
+-
+-void
+-SHA1Final(void *digest, SHA1_CTX *ctx)
+-{
+-	uint8_t		bitcount_be[sizeof (ctx->count)];
+-	uint32_t	index = (ctx->count[1] >> 3) & 0x3f;
+-
+-	/* store bit count, big endian */
+-	Encode(bitcount_be, ctx->count, sizeof (bitcount_be));
+-
+-	/* pad out to 56 mod 64 */
+-	SHA1Update(ctx, PADDING, ((index < 56) ? 56 : 120) - index);
+-
+-	/* append length (before padding) */
+-	SHA1Update(ctx, bitcount_be, sizeof (bitcount_be));
+-
+-	/* store state in digest */
+-	Encode(digest, ctx->state, sizeof (ctx->state));
+-
+-	/* zeroize sensitive information */
+-	bzero(ctx, sizeof (*ctx));
+-}
+-
+-
+-#if !defined(__amd64)
+-
+-typedef uint32_t sha1word;
+-
+-/*
+- * sparc optimization:
+- *
+- * on the sparc, we can load big endian 32-bit data easily.  note that
+- * special care must be taken to ensure the address is 32-bit aligned.
+- * in the interest of speed, we don't check to make sure, since
+- * careful programming can guarantee this for us.
+- */
+-
+-#if	defined(_ZFS_BIG_ENDIAN)
+-#define	LOAD_BIG_32(addr)	(*(uint32_t *)(addr))
+-
+-#elif	defined(HAVE_HTONL)
+-#define	LOAD_BIG_32(addr) htonl(*((uint32_t *)(addr)))
+-
+-#else
+-#define	LOAD_BIG_32(addr)	BE_32(*((uint32_t *)(addr)))
+-#endif	/* _BIG_ENDIAN */
+-
+-/*
+- * SHA1Transform()
+- */
+-#if	defined(W_ARRAY)
+-#define	W(n) w[n]
+-#else	/* !defined(W_ARRAY) */
+-#define	W(n) w_ ## n
+-#endif	/* !defined(W_ARRAY) */
+-
+-/*
+- * ROTATE_LEFT rotates x left n bits.
+- */
+-
+-#if	defined(__GNUC__) && defined(_LP64)
+-static __inline__ uint64_t
+-ROTATE_LEFT(uint64_t value, uint32_t n)
+-{
+-	uint32_t t32;
+-
+-	t32 = (uint32_t)value;
+-	return ((t32 << n) | (t32 >> (32 - n)));
+-}
+-
+-#else
+-
+-#define	ROTATE_LEFT(x, n)	\
+-	(((x) << (n)) | ((x) >> ((sizeof (x) * NBBY)-(n))))
+-
+-#endif
+-
+-#if	defined(__sparc)
+-
+-
+-/*
+- * sparc register window optimization:
+- *
+- * `a', `b', `c', `d', and `e' are passed into SHA1Transform
+- * explicitly since it increases the number of registers available to
+- * the compiler.  under this scheme, these variables can be held in
+- * %i0 - %i4, which leaves more local and out registers available.
+- *
+- * purpose: sha1 transformation -- updates the digest based on `block'
+- *   input: uint32_t	: bytes  1 -  4 of the digest
+- *          uint32_t	: bytes  5 -  8 of the digest
+- *          uint32_t	: bytes  9 - 12 of the digest
+- *          uint32_t	: bytes 12 - 16 of the digest
+- *          uint32_t	: bytes 16 - 20 of the digest
+- *          SHA1_CTX *	: the context to update
+- *          uint8_t [64]: the block to use to update the digest
+- *  output: void
+- */
+-
+-
+-void
+-SHA1Transform(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e,
+-    SHA1_CTX *ctx, const uint8_t blk[64])
+-{
+-	/*
+-	 * sparc optimization:
+-	 *
+-	 * while it is somewhat counter-intuitive, on sparc, it is
+-	 * more efficient to place all the constants used in this
+-	 * function in an array and load the values out of the array
+-	 * than to manually load the constants.  this is because
+-	 * setting a register to a 32-bit value takes two ops in most
+-	 * cases: a `sethi' and an `or', but loading a 32-bit value
+-	 * from memory only takes one `ld' (or `lduw' on v9).  while
+-	 * this increases memory usage, the compiler can find enough
+-	 * other things to do while waiting to keep the pipeline does
+-	 * not stall.  additionally, it is likely that many of these
+-	 * constants are cached so that later accesses do not even go
+-	 * out to the bus.
+-	 *
+-	 * this array is declared `static' to keep the compiler from
+-	 * having to bcopy() this array onto the stack frame of
+-	 * SHA1Transform() each time it is called -- which is
+-	 * unacceptably expensive.
+-	 *
+-	 * the `const' is to ensure that callers are good citizens and
+-	 * do not try to munge the array.  since these routines are
+-	 * going to be called from inside multithreaded kernelland,
+-	 * this is a good safety check. -- `sha1_consts' will end up in
+-	 * .rodata.
+-	 *
+-	 * unfortunately, loading from an array in this manner hurts
+-	 * performance under Intel.  So, there is a macro,
+-	 * SHA1_CONST(), used in SHA1Transform(), that either expands to
+-	 * a reference to this array, or to the actual constant,
+-	 * depending on what platform this code is compiled for.
+-	 */
+-
+-
+-	static const uint32_t sha1_consts[] = {
+-		SHA1_CONST_0, SHA1_CONST_1, SHA1_CONST_2, SHA1_CONST_3
+-	};
+-
+-
+-	/*
+-	 * general optimization:
+-	 *
+-	 * use individual integers instead of using an array.  this is a
+-	 * win, although the amount it wins by seems to vary quite a bit.
+-	 */
+-
+-
+-	uint32_t	w_0, w_1, w_2,  w_3,  w_4,  w_5,  w_6,  w_7;
+-	uint32_t	w_8, w_9, w_10, w_11, w_12, w_13, w_14, w_15;
+-
+-
+-	/*
+-	 * sparc optimization:
+-	 *
+-	 * if `block' is already aligned on a 4-byte boundary, use
+-	 * LOAD_BIG_32() directly.  otherwise, bcopy() into a
+-	 * buffer that *is* aligned on a 4-byte boundary and then do
+-	 * the LOAD_BIG_32() on that buffer.  benchmarks have shown
+-	 * that using the bcopy() is better than loading the bytes
+-	 * individually and doing the endian-swap by hand.
+-	 *
+-	 * even though it's quite tempting to assign to do:
+-	 *
+-	 * blk = bcopy(ctx->buf_un.buf32, blk, sizeof (ctx->buf_un.buf32));
+-	 *
+-	 * and only have one set of LOAD_BIG_32()'s, the compiler
+-	 * *does not* like that, so please resist the urge.
+-	 */
+-
+-
+-	if ((uintptr_t)blk & 0x3) {		/* not 4-byte aligned? */
+-		bcopy(blk, ctx->buf_un.buf32,  sizeof (ctx->buf_un.buf32));
+-		w_15 = LOAD_BIG_32(ctx->buf_un.buf32 + 15);
+-		w_14 = LOAD_BIG_32(ctx->buf_un.buf32 + 14);
+-		w_13 = LOAD_BIG_32(ctx->buf_un.buf32 + 13);
+-		w_12 = LOAD_BIG_32(ctx->buf_un.buf32 + 12);
+-		w_11 = LOAD_BIG_32(ctx->buf_un.buf32 + 11);
+-		w_10 = LOAD_BIG_32(ctx->buf_un.buf32 + 10);
+-		w_9  = LOAD_BIG_32(ctx->buf_un.buf32 +  9);
+-		w_8  = LOAD_BIG_32(ctx->buf_un.buf32 +  8);
+-		w_7  = LOAD_BIG_32(ctx->buf_un.buf32 +  7);
+-		w_6  = LOAD_BIG_32(ctx->buf_un.buf32 +  6);
+-		w_5  = LOAD_BIG_32(ctx->buf_un.buf32 +  5);
+-		w_4  = LOAD_BIG_32(ctx->buf_un.buf32 +  4);
+-		w_3  = LOAD_BIG_32(ctx->buf_un.buf32 +  3);
+-		w_2  = LOAD_BIG_32(ctx->buf_un.buf32 +  2);
+-		w_1  = LOAD_BIG_32(ctx->buf_un.buf32 +  1);
+-		w_0  = LOAD_BIG_32(ctx->buf_un.buf32 +  0);
+-	} else {
+-		/* LINTED E_BAD_PTR_CAST_ALIGN */
+-		w_15 = LOAD_BIG_32(blk + 60);
+-		/* LINTED E_BAD_PTR_CAST_ALIGN */
+-		w_14 = LOAD_BIG_32(blk + 56);
+-		/* LINTED E_BAD_PTR_CAST_ALIGN */
+-		w_13 = LOAD_BIG_32(blk + 52);
+-		/* LINTED E_BAD_PTR_CAST_ALIGN */
+-		w_12 = LOAD_BIG_32(blk + 48);
+-		/* LINTED E_BAD_PTR_CAST_ALIGN */
+-		w_11 = LOAD_BIG_32(blk + 44);
+-		/* LINTED E_BAD_PTR_CAST_ALIGN */
+-		w_10 = LOAD_BIG_32(blk + 40);
+-		/* LINTED E_BAD_PTR_CAST_ALIGN */
+-		w_9  = LOAD_BIG_32(blk + 36);
+-		/* LINTED E_BAD_PTR_CAST_ALIGN */
+-		w_8  = LOAD_BIG_32(blk + 32);
+-		/* LINTED E_BAD_PTR_CAST_ALIGN */
+-		w_7  = LOAD_BIG_32(blk + 28);
+-		/* LINTED E_BAD_PTR_CAST_ALIGN */
+-		w_6  = LOAD_BIG_32(blk + 24);
+-		/* LINTED E_BAD_PTR_CAST_ALIGN */
+-		w_5  = LOAD_BIG_32(blk + 20);
+-		/* LINTED E_BAD_PTR_CAST_ALIGN */
+-		w_4  = LOAD_BIG_32(blk + 16);
+-		/* LINTED E_BAD_PTR_CAST_ALIGN */
+-		w_3  = LOAD_BIG_32(blk + 12);
+-		/* LINTED E_BAD_PTR_CAST_ALIGN */
+-		w_2  = LOAD_BIG_32(blk +  8);
+-		/* LINTED E_BAD_PTR_CAST_ALIGN */
+-		w_1  = LOAD_BIG_32(blk +  4);
+-		/* LINTED E_BAD_PTR_CAST_ALIGN */
+-		w_0  = LOAD_BIG_32(blk +  0);
+-	}
+-#else	/* !defined(__sparc) */
+-
+-void /* CSTYLED */
+-SHA1Transform(SHA1_CTX *ctx, const uint8_t blk[64])
+-{
+-	/* CSTYLED */
+-	sha1word a = ctx->state[0];
+-	sha1word b = ctx->state[1];
+-	sha1word c = ctx->state[2];
+-	sha1word d = ctx->state[3];
+-	sha1word e = ctx->state[4];
+-
+-#if	defined(W_ARRAY)
+-	sha1word	w[16];
+-#else	/* !defined(W_ARRAY) */
+-	sha1word	w_0, w_1, w_2,  w_3,  w_4,  w_5,  w_6,  w_7;
+-	sha1word	w_8, w_9, w_10, w_11, w_12, w_13, w_14, w_15;
+-#endif	/* !defined(W_ARRAY) */
+-
+-	W(0)  = LOAD_BIG_32((void *)(blk +  0));
+-	W(1)  = LOAD_BIG_32((void *)(blk +  4));
+-	W(2)  = LOAD_BIG_32((void *)(blk +  8));
+-	W(3)  = LOAD_BIG_32((void *)(blk + 12));
+-	W(4)  = LOAD_BIG_32((void *)(blk + 16));
+-	W(5)  = LOAD_BIG_32((void *)(blk + 20));
+-	W(6)  = LOAD_BIG_32((void *)(blk + 24));
+-	W(7)  = LOAD_BIG_32((void *)(blk + 28));
+-	W(8)  = LOAD_BIG_32((void *)(blk + 32));
+-	W(9)  = LOAD_BIG_32((void *)(blk + 36));
+-	W(10) = LOAD_BIG_32((void *)(blk + 40));
+-	W(11) = LOAD_BIG_32((void *)(blk + 44));
+-	W(12) = LOAD_BIG_32((void *)(blk + 48));
+-	W(13) = LOAD_BIG_32((void *)(blk + 52));
+-	W(14) = LOAD_BIG_32((void *)(blk + 56));
+-	W(15) = LOAD_BIG_32((void *)(blk + 60));
+-
+-#endif /* !defined(__sparc) */
+-
+-	/*
+-	 * general optimization:
+-	 *
+-	 * even though this approach is described in the standard as
+-	 * being slower algorithmically, it is 30-40% faster than the
+-	 * "faster" version under SPARC, because this version has more
+-	 * of the constraints specified at compile-time and uses fewer
+-	 * variables (and therefore has better register utilization)
+-	 * than its "speedier" brother.  (i've tried both, trust me)
+-	 *
+-	 * for either method given in the spec, there is an "assignment"
+-	 * phase where the following takes place:
+-	 *
+-	 *	tmp = (main_computation);
+-	 *	e = d; d = c; c = rotate_left(b, 30); b = a; a = tmp;
+-	 *
+-	 * we can make the algorithm go faster by not doing this work,
+-	 * but just pretending that `d' is now `e', etc. this works
+-	 * really well and obviates the need for a temporary variable.
+-	 * however, we still explicitly perform the rotate action,
+-	 * since it is cheaper on SPARC to do it once than to have to
+-	 * do it over and over again.
+-	 */
+-
+-	/* round 1 */
+-	e = ROTATE_LEFT(a, 5) + F(b, c, d) + e + W(0) + SHA1_CONST(0); /* 0 */
+-	b = ROTATE_LEFT(b, 30);
+-
+-	d = ROTATE_LEFT(e, 5) + F(a, b, c) + d + W(1) + SHA1_CONST(0); /* 1 */
+-	a = ROTATE_LEFT(a, 30);
+-
+-	c = ROTATE_LEFT(d, 5) + F(e, a, b) + c + W(2) + SHA1_CONST(0); /* 2 */
+-	e = ROTATE_LEFT(e, 30);
+-
+-	b = ROTATE_LEFT(c, 5) + F(d, e, a) + b + W(3) + SHA1_CONST(0); /* 3 */
+-	d = ROTATE_LEFT(d, 30);
+-
+-	a = ROTATE_LEFT(b, 5) + F(c, d, e) + a + W(4) + SHA1_CONST(0); /* 4 */
+-	c = ROTATE_LEFT(c, 30);
+-
+-	e = ROTATE_LEFT(a, 5) + F(b, c, d) + e + W(5) + SHA1_CONST(0); /* 5 */
+-	b = ROTATE_LEFT(b, 30);
+-
+-	d = ROTATE_LEFT(e, 5) + F(a, b, c) + d + W(6) + SHA1_CONST(0); /* 6 */
+-	a = ROTATE_LEFT(a, 30);
+-
+-	c = ROTATE_LEFT(d, 5) + F(e, a, b) + c + W(7) + SHA1_CONST(0); /* 7 */
+-	e = ROTATE_LEFT(e, 30);
+-
+-	b = ROTATE_LEFT(c, 5) + F(d, e, a) + b + W(8) + SHA1_CONST(0); /* 8 */
+-	d = ROTATE_LEFT(d, 30);
+-
+-	a = ROTATE_LEFT(b, 5) + F(c, d, e) + a + W(9) + SHA1_CONST(0); /* 9 */
+-	c = ROTATE_LEFT(c, 30);
+-
+-	e = ROTATE_LEFT(a, 5) + F(b, c, d) + e + W(10) + SHA1_CONST(0); /* 10 */
+-	b = ROTATE_LEFT(b, 30);
+-
+-	d = ROTATE_LEFT(e, 5) + F(a, b, c) + d + W(11) + SHA1_CONST(0); /* 11 */
+-	a = ROTATE_LEFT(a, 30);
+-
+-	c = ROTATE_LEFT(d, 5) + F(e, a, b) + c + W(12) + SHA1_CONST(0); /* 12 */
+-	e = ROTATE_LEFT(e, 30);
+-
+-	b = ROTATE_LEFT(c, 5) + F(d, e, a) + b + W(13) + SHA1_CONST(0); /* 13 */
+-	d = ROTATE_LEFT(d, 30);
+-
+-	a = ROTATE_LEFT(b, 5) + F(c, d, e) + a + W(14) + SHA1_CONST(0); /* 14 */
+-	c = ROTATE_LEFT(c, 30);
+-
+-	e = ROTATE_LEFT(a, 5) + F(b, c, d) + e + W(15) + SHA1_CONST(0); /* 15 */
+-	b = ROTATE_LEFT(b, 30);
+-
+-	W(0) = ROTATE_LEFT((W(13) ^ W(8) ^ W(2) ^ W(0)), 1);		/* 16 */
+-	d = ROTATE_LEFT(e, 5) + F(a, b, c) + d + W(0) + SHA1_CONST(0);
+-	a = ROTATE_LEFT(a, 30);
+-
+-	W(1) = ROTATE_LEFT((W(14) ^ W(9) ^ W(3) ^ W(1)), 1);		/* 17 */
+-	c = ROTATE_LEFT(d, 5) + F(e, a, b) + c + W(1) + SHA1_CONST(0);
+-	e = ROTATE_LEFT(e, 30);
+-
+-	W(2) = ROTATE_LEFT((W(15) ^ W(10) ^ W(4) ^ W(2)), 1);	/* 18 */
+-	b = ROTATE_LEFT(c, 5) + F(d, e, a) + b + W(2) + SHA1_CONST(0);
+-	d = ROTATE_LEFT(d, 30);
+-
+-	W(3) = ROTATE_LEFT((W(0) ^ W(11) ^ W(5) ^ W(3)), 1);		/* 19 */
+-	a = ROTATE_LEFT(b, 5) + F(c, d, e) + a + W(3) + SHA1_CONST(0);
+-	c = ROTATE_LEFT(c, 30);
+-
+-	/* round 2 */
+-	W(4) = ROTATE_LEFT((W(1) ^ W(12) ^ W(6) ^ W(4)), 1);		/* 20 */
+-	e = ROTATE_LEFT(a, 5) + G(b, c, d) + e + W(4) + SHA1_CONST(1);
+-	b = ROTATE_LEFT(b, 30);
+-
+-	W(5) = ROTATE_LEFT((W(2) ^ W(13) ^ W(7) ^ W(5)), 1);		/* 21 */
+-	d = ROTATE_LEFT(e, 5) + G(a, b, c) + d + W(5) + SHA1_CONST(1);
+-	a = ROTATE_LEFT(a, 30);
+-
+-	W(6) = ROTATE_LEFT((W(3) ^ W(14) ^ W(8) ^ W(6)), 1);		/* 22 */
+-	c = ROTATE_LEFT(d, 5) + G(e, a, b) + c + W(6) + SHA1_CONST(1);
+-	e = ROTATE_LEFT(e, 30);
+-
+-	W(7) = ROTATE_LEFT((W(4) ^ W(15) ^ W(9) ^ W(7)), 1);		/* 23 */
+-	b = ROTATE_LEFT(c, 5) + G(d, e, a) + b + W(7) + SHA1_CONST(1);
+-	d = ROTATE_LEFT(d, 30);
+-
+-	W(8) = ROTATE_LEFT((W(5) ^ W(0) ^ W(10) ^ W(8)), 1);		/* 24 */
+-	a = ROTATE_LEFT(b, 5) + G(c, d, e) + a + W(8) + SHA1_CONST(1);
+-	c = ROTATE_LEFT(c, 30);
+-
+-	W(9) = ROTATE_LEFT((W(6) ^ W(1) ^ W(11) ^ W(9)), 1);		/* 25 */
+-	e = ROTATE_LEFT(a, 5) + G(b, c, d) + e + W(9) + SHA1_CONST(1);
+-	b = ROTATE_LEFT(b, 30);
+-
+-	W(10) = ROTATE_LEFT((W(7) ^ W(2) ^ W(12) ^ W(10)), 1);	/* 26 */
+-	d = ROTATE_LEFT(e, 5) + G(a, b, c) + d + W(10) + SHA1_CONST(1);
+-	a = ROTATE_LEFT(a, 30);
+-
+-	W(11) = ROTATE_LEFT((W(8) ^ W(3) ^ W(13) ^ W(11)), 1);	/* 27 */
+-	c = ROTATE_LEFT(d, 5) + G(e, a, b) + c + W(11) + SHA1_CONST(1);
+-	e = ROTATE_LEFT(e, 30);
+-
+-	W(12) = ROTATE_LEFT((W(9) ^ W(4) ^ W(14) ^ W(12)), 1);	/* 28 */
+-	b = ROTATE_LEFT(c, 5) + G(d, e, a) + b + W(12) + SHA1_CONST(1);
+-	d = ROTATE_LEFT(d, 30);
+-
+-	W(13) = ROTATE_LEFT((W(10) ^ W(5) ^ W(15) ^ W(13)), 1);	/* 29 */
+-	a = ROTATE_LEFT(b, 5) + G(c, d, e) + a + W(13) + SHA1_CONST(1);
+-	c = ROTATE_LEFT(c, 30);
+-
+-	W(14) = ROTATE_LEFT((W(11) ^ W(6) ^ W(0) ^ W(14)), 1);	/* 30 */
+-	e = ROTATE_LEFT(a, 5) + G(b, c, d) + e + W(14) + SHA1_CONST(1);
+-	b = ROTATE_LEFT(b, 30);
+-
+-	W(15) = ROTATE_LEFT((W(12) ^ W(7) ^ W(1) ^ W(15)), 1);	/* 31 */
+-	d = ROTATE_LEFT(e, 5) + G(a, b, c) + d + W(15) + SHA1_CONST(1);
+-	a = ROTATE_LEFT(a, 30);
+-
+-	W(0) = ROTATE_LEFT((W(13) ^ W(8) ^ W(2) ^ W(0)), 1);		/* 32 */
+-	c = ROTATE_LEFT(d, 5) + G(e, a, b) + c + W(0) + SHA1_CONST(1);
+-	e = ROTATE_LEFT(e, 30);
+-
+-	W(1) = ROTATE_LEFT((W(14) ^ W(9) ^ W(3) ^ W(1)), 1);		/* 33 */
+-	b = ROTATE_LEFT(c, 5) + G(d, e, a) + b + W(1) + SHA1_CONST(1);
+-	d = ROTATE_LEFT(d, 30);
+-
+-	W(2) = ROTATE_LEFT((W(15) ^ W(10) ^ W(4) ^ W(2)), 1);	/* 34 */
+-	a = ROTATE_LEFT(b, 5) + G(c, d, e) + a + W(2) + SHA1_CONST(1);
+-	c = ROTATE_LEFT(c, 30);
+-
+-	W(3) = ROTATE_LEFT((W(0) ^ W(11) ^ W(5) ^ W(3)), 1);		/* 35 */
+-	e = ROTATE_LEFT(a, 5) + G(b, c, d) + e + W(3) + SHA1_CONST(1);
+-	b = ROTATE_LEFT(b, 30);
+-
+-	W(4) = ROTATE_LEFT((W(1) ^ W(12) ^ W(6) ^ W(4)), 1);		/* 36 */
+-	d = ROTATE_LEFT(e, 5) + G(a, b, c) + d + W(4) + SHA1_CONST(1);
+-	a = ROTATE_LEFT(a, 30);
+-
+-	W(5) = ROTATE_LEFT((W(2) ^ W(13) ^ W(7) ^ W(5)), 1);		/* 37 */
+-	c = ROTATE_LEFT(d, 5) + G(e, a, b) + c + W(5) + SHA1_CONST(1);
+-	e = ROTATE_LEFT(e, 30);
+-
+-	W(6) = ROTATE_LEFT((W(3) ^ W(14) ^ W(8) ^ W(6)), 1);		/* 38 */
+-	b = ROTATE_LEFT(c, 5) + G(d, e, a) + b + W(6) + SHA1_CONST(1);
+-	d = ROTATE_LEFT(d, 30);
+-
+-	W(7) = ROTATE_LEFT((W(4) ^ W(15) ^ W(9) ^ W(7)), 1);		/* 39 */
+-	a = ROTATE_LEFT(b, 5) + G(c, d, e) + a + W(7) + SHA1_CONST(1);
+-	c = ROTATE_LEFT(c, 30);
+-
+-	/* round 3 */
+-	W(8) = ROTATE_LEFT((W(5) ^ W(0) ^ W(10) ^ W(8)), 1);		/* 40 */
+-	e = ROTATE_LEFT(a, 5) + H(b, c, d) + e + W(8) + SHA1_CONST(2);
+-	b = ROTATE_LEFT(b, 30);
+-
+-	W(9) = ROTATE_LEFT((W(6) ^ W(1) ^ W(11) ^ W(9)), 1);		/* 41 */
+-	d = ROTATE_LEFT(e, 5) + H(a, b, c) + d + W(9) + SHA1_CONST(2);
+-	a = ROTATE_LEFT(a, 30);
+-
+-	W(10) = ROTATE_LEFT((W(7) ^ W(2) ^ W(12) ^ W(10)), 1);	/* 42 */
+-	c = ROTATE_LEFT(d, 5) + H(e, a, b) + c + W(10) + SHA1_CONST(2);
+-	e = ROTATE_LEFT(e, 30);
+-
+-	W(11) = ROTATE_LEFT((W(8) ^ W(3) ^ W(13) ^ W(11)), 1);	/* 43 */
+-	b = ROTATE_LEFT(c, 5) + H(d, e, a) + b + W(11) + SHA1_CONST(2);
+-	d = ROTATE_LEFT(d, 30);
+-
+-	W(12) = ROTATE_LEFT((W(9) ^ W(4) ^ W(14) ^ W(12)), 1);	/* 44 */
+-	a = ROTATE_LEFT(b, 5) + H(c, d, e) + a + W(12) + SHA1_CONST(2);
+-	c = ROTATE_LEFT(c, 30);
+-
+-	W(13) = ROTATE_LEFT((W(10) ^ W(5) ^ W(15) ^ W(13)), 1);	/* 45 */
+-	e = ROTATE_LEFT(a, 5) + H(b, c, d) + e + W(13) + SHA1_CONST(2);
+-	b = ROTATE_LEFT(b, 30);
+-
+-	W(14) = ROTATE_LEFT((W(11) ^ W(6) ^ W(0) ^ W(14)), 1);	/* 46 */
+-	d = ROTATE_LEFT(e, 5) + H(a, b, c) + d + W(14) + SHA1_CONST(2);
+-	a = ROTATE_LEFT(a, 30);
+-
+-	W(15) = ROTATE_LEFT((W(12) ^ W(7) ^ W(1) ^ W(15)), 1);	/* 47 */
+-	c = ROTATE_LEFT(d, 5) + H(e, a, b) + c + W(15) + SHA1_CONST(2);
+-	e = ROTATE_LEFT(e, 30);
+-
+-	W(0) = ROTATE_LEFT((W(13) ^ W(8) ^ W(2) ^ W(0)), 1);		/* 48 */
+-	b = ROTATE_LEFT(c, 5) + H(d, e, a) + b + W(0) + SHA1_CONST(2);
+-	d = ROTATE_LEFT(d, 30);
+-
+-	W(1) = ROTATE_LEFT((W(14) ^ W(9) ^ W(3) ^ W(1)), 1);		/* 49 */
+-	a = ROTATE_LEFT(b, 5) + H(c, d, e) + a + W(1) + SHA1_CONST(2);
+-	c = ROTATE_LEFT(c, 30);
+-
+-	W(2) = ROTATE_LEFT((W(15) ^ W(10) ^ W(4) ^ W(2)), 1);	/* 50 */
+-	e = ROTATE_LEFT(a, 5) + H(b, c, d) + e + W(2) + SHA1_CONST(2);
+-	b = ROTATE_LEFT(b, 30);
+-
+-	W(3) = ROTATE_LEFT((W(0) ^ W(11) ^ W(5) ^ W(3)), 1);		/* 51 */
+-	d = ROTATE_LEFT(e, 5) + H(a, b, c) + d + W(3) + SHA1_CONST(2);
+-	a = ROTATE_LEFT(a, 30);
+-
+-	W(4) = ROTATE_LEFT((W(1) ^ W(12) ^ W(6) ^ W(4)), 1);		/* 52 */
+-	c = ROTATE_LEFT(d, 5) + H(e, a, b) + c + W(4) + SHA1_CONST(2);
+-	e = ROTATE_LEFT(e, 30);
+-
+-	W(5) = ROTATE_LEFT((W(2) ^ W(13) ^ W(7) ^ W(5)), 1);		/* 53 */
+-	b = ROTATE_LEFT(c, 5) + H(d, e, a) + b + W(5) + SHA1_CONST(2);
+-	d = ROTATE_LEFT(d, 30);
+-
+-	W(6) = ROTATE_LEFT((W(3) ^ W(14) ^ W(8) ^ W(6)), 1);		/* 54 */
+-	a = ROTATE_LEFT(b, 5) + H(c, d, e) + a + W(6) + SHA1_CONST(2);
+-	c = ROTATE_LEFT(c, 30);
+-
+-	W(7) = ROTATE_LEFT((W(4) ^ W(15) ^ W(9) ^ W(7)), 1);		/* 55 */
+-	e = ROTATE_LEFT(a, 5) + H(b, c, d) + e + W(7) + SHA1_CONST(2);
+-	b = ROTATE_LEFT(b, 30);
+-
+-	W(8) = ROTATE_LEFT((W(5) ^ W(0) ^ W(10) ^ W(8)), 1);		/* 56 */
+-	d = ROTATE_LEFT(e, 5) + H(a, b, c) + d + W(8) + SHA1_CONST(2);
+-	a = ROTATE_LEFT(a, 30);
+-
+-	W(9) = ROTATE_LEFT((W(6) ^ W(1) ^ W(11) ^ W(9)), 1);		/* 57 */
+-	c = ROTATE_LEFT(d, 5) + H(e, a, b) + c + W(9) + SHA1_CONST(2);
+-	e = ROTATE_LEFT(e, 30);
+-
+-	W(10) = ROTATE_LEFT((W(7) ^ W(2) ^ W(12) ^ W(10)), 1);	/* 58 */
+-	b = ROTATE_LEFT(c, 5) + H(d, e, a) + b + W(10) + SHA1_CONST(2);
+-	d = ROTATE_LEFT(d, 30);
+-
+-	W(11) = ROTATE_LEFT((W(8) ^ W(3) ^ W(13) ^ W(11)), 1);	/* 59 */
+-	a = ROTATE_LEFT(b, 5) + H(c, d, e) + a + W(11) + SHA1_CONST(2);
+-	c = ROTATE_LEFT(c, 30);
+-
+-	/* round 4 */
+-	W(12) = ROTATE_LEFT((W(9) ^ W(4) ^ W(14) ^ W(12)), 1);	/* 60 */
+-	e = ROTATE_LEFT(a, 5) + G(b, c, d) + e + W(12) + SHA1_CONST(3);
+-	b = ROTATE_LEFT(b, 30);
+-
+-	W(13) = ROTATE_LEFT((W(10) ^ W(5) ^ W(15) ^ W(13)), 1);	/* 61 */
+-	d = ROTATE_LEFT(e, 5) + G(a, b, c) + d + W(13) + SHA1_CONST(3);
+-	a = ROTATE_LEFT(a, 30);
+-
+-	W(14) = ROTATE_LEFT((W(11) ^ W(6) ^ W(0) ^ W(14)), 1);	/* 62 */
+-	c = ROTATE_LEFT(d, 5) + G(e, a, b) + c + W(14) + SHA1_CONST(3);
+-	e = ROTATE_LEFT(e, 30);
+-
+-	W(15) = ROTATE_LEFT((W(12) ^ W(7) ^ W(1) ^ W(15)), 1);	/* 63 */
+-	b = ROTATE_LEFT(c, 5) + G(d, e, a) + b + W(15) + SHA1_CONST(3);
+-	d = ROTATE_LEFT(d, 30);
+-
+-	W(0) = ROTATE_LEFT((W(13) ^ W(8) ^ W(2) ^ W(0)), 1);		/* 64 */
+-	a = ROTATE_LEFT(b, 5) + G(c, d, e) + a + W(0) + SHA1_CONST(3);
+-	c = ROTATE_LEFT(c, 30);
+-
+-	W(1) = ROTATE_LEFT((W(14) ^ W(9) ^ W(3) ^ W(1)), 1);		/* 65 */
+-	e = ROTATE_LEFT(a, 5) + G(b, c, d) + e + W(1) + SHA1_CONST(3);
+-	b = ROTATE_LEFT(b, 30);
+-
+-	W(2) = ROTATE_LEFT((W(15) ^ W(10) ^ W(4) ^ W(2)), 1);	/* 66 */
+-	d = ROTATE_LEFT(e, 5) + G(a, b, c) + d + W(2) + SHA1_CONST(3);
+-	a = ROTATE_LEFT(a, 30);
+-
+-	W(3) = ROTATE_LEFT((W(0) ^ W(11) ^ W(5) ^ W(3)), 1);		/* 67 */
+-	c = ROTATE_LEFT(d, 5) + G(e, a, b) + c + W(3) + SHA1_CONST(3);
+-	e = ROTATE_LEFT(e, 30);
+-
+-	W(4) = ROTATE_LEFT((W(1) ^ W(12) ^ W(6) ^ W(4)), 1);		/* 68 */
+-	b = ROTATE_LEFT(c, 5) + G(d, e, a) + b + W(4) + SHA1_CONST(3);
+-	d = ROTATE_LEFT(d, 30);
+-
+-	W(5) = ROTATE_LEFT((W(2) ^ W(13) ^ W(7) ^ W(5)), 1);		/* 69 */
+-	a = ROTATE_LEFT(b, 5) + G(c, d, e) + a + W(5) + SHA1_CONST(3);
+-	c = ROTATE_LEFT(c, 30);
+-
+-	W(6) = ROTATE_LEFT((W(3) ^ W(14) ^ W(8) ^ W(6)), 1);		/* 70 */
+-	e = ROTATE_LEFT(a, 5) + G(b, c, d) + e + W(6) + SHA1_CONST(3);
+-	b = ROTATE_LEFT(b, 30);
+-
+-	W(7) = ROTATE_LEFT((W(4) ^ W(15) ^ W(9) ^ W(7)), 1);		/* 71 */
+-	d = ROTATE_LEFT(e, 5) + G(a, b, c) + d + W(7) + SHA1_CONST(3);
+-	a = ROTATE_LEFT(a, 30);
+-
+-	W(8) = ROTATE_LEFT((W(5) ^ W(0) ^ W(10) ^ W(8)), 1);		/* 72 */
+-	c = ROTATE_LEFT(d, 5) + G(e, a, b) + c + W(8) + SHA1_CONST(3);
+-	e = ROTATE_LEFT(e, 30);
+-
+-	W(9) = ROTATE_LEFT((W(6) ^ W(1) ^ W(11) ^ W(9)), 1);		/* 73 */
+-	b = ROTATE_LEFT(c, 5) + G(d, e, a) + b + W(9) + SHA1_CONST(3);
+-	d = ROTATE_LEFT(d, 30);
+-
+-	W(10) = ROTATE_LEFT((W(7) ^ W(2) ^ W(12) ^ W(10)), 1);	/* 74 */
+-	a = ROTATE_LEFT(b, 5) + G(c, d, e) + a + W(10) + SHA1_CONST(3);
+-	c = ROTATE_LEFT(c, 30);
+-
+-	W(11) = ROTATE_LEFT((W(8) ^ W(3) ^ W(13) ^ W(11)), 1);	/* 75 */
+-	e = ROTATE_LEFT(a, 5) + G(b, c, d) + e + W(11) + SHA1_CONST(3);
+-	b = ROTATE_LEFT(b, 30);
+-
+-	W(12) = ROTATE_LEFT((W(9) ^ W(4) ^ W(14) ^ W(12)), 1);	/* 76 */
+-	d = ROTATE_LEFT(e, 5) + G(a, b, c) + d + W(12) + SHA1_CONST(3);
+-	a = ROTATE_LEFT(a, 30);
+-
+-	W(13) = ROTATE_LEFT((W(10) ^ W(5) ^ W(15) ^ W(13)), 1);	/* 77 */
+-	c = ROTATE_LEFT(d, 5) + G(e, a, b) + c + W(13) + SHA1_CONST(3);
+-	e = ROTATE_LEFT(e, 30);
+-
+-	W(14) = ROTATE_LEFT((W(11) ^ W(6) ^ W(0) ^ W(14)), 1);	/* 78 */
+-	b = ROTATE_LEFT(c, 5) + G(d, e, a) + b + W(14) + SHA1_CONST(3);
+-	d = ROTATE_LEFT(d, 30);
+-
+-	W(15) = ROTATE_LEFT((W(12) ^ W(7) ^ W(1) ^ W(15)), 1);	/* 79 */
+-
+-	ctx->state[0] += ROTATE_LEFT(b, 5) + G(c, d, e) + a + W(15) +
+-	    SHA1_CONST(3);
+-	ctx->state[1] += b;
+-	ctx->state[2] += ROTATE_LEFT(c, 30);
+-	ctx->state[3] += d;
+-	ctx->state[4] += e;
+-
+-	/* zeroize sensitive information */
+-	W(0) = W(1) = W(2) = W(3) = W(4) = W(5) = W(6) = W(7) = W(8) = 0;
+-	W(9) = W(10) = W(11) = W(12) = W(13) = W(14) = W(15) = 0;
+-}
+-#endif	/* !__amd64 */
+-
+-
+-/*
+- * Encode()
+- *
+- * purpose: to convert a list of numbers from little endian to big endian
+- *   input: uint8_t *	: place to store the converted big endian numbers
+- *	    uint32_t *	: place to get numbers to convert from
+- *          size_t	: the length of the input in bytes
+- *  output: void
+- */
+-
+-static void
+-Encode(uint8_t *_RESTRICT_KYWD output, const uint32_t *_RESTRICT_KYWD input,
+-    size_t len)
+-{
+-	size_t		i, j;
+-
+-#if defined(__sparc)
+-	if (IS_P2ALIGNED(output, sizeof (uint32_t))) {
+-		for (i = 0, j = 0; j < len; i++, j += 4) {
+-			/* LINTED E_BAD_PTR_CAST_ALIGN */
+-			*((uint32_t *)(output + j)) = input[i];
+-		}
+-	} else {
+-#endif /* little endian -- will work on big endian, but slowly */
+-
+-		for (i = 0, j = 0; j < len; i++, j += 4) {
+-			output[j]	= (input[i] >> 24) & 0xff;
+-			output[j + 1]	= (input[i] >> 16) & 0xff;
+-			output[j + 2]	= (input[i] >>  8) & 0xff;
+-			output[j + 3]	= input[i] & 0xff;
+-		}
+-#if defined(__sparc)
+-	}
+-#endif
+-}
+diff --git a/module/icp/asm-x86_64/sha1/sha1-x86_64.S b/module/icp/asm-x86_64/sha1/sha1-x86_64.S
+deleted file mode 100644
+index cb923784a7..0000000000
+--- a/module/icp/asm-x86_64/sha1/sha1-x86_64.S
++++ /dev/null
+@@ -1,1353 +0,0 @@
+-/*
+- * !/usr/bin/env perl
+- *
+- *  ====================================================================
+- *  Written by Andy Polyakov <appro@fy.chalmers.se> for the OpenSSL
+- *  project. The module is, however, dual licensed under OpenSSL and
+- *  CRYPTOGAMS licenses depending on where you obtain it. For further
+- *  details see http://www.openssl.org/~appro/cryptogams/.
+- *  ====================================================================
+- *
+- *  sha1_block procedure for x86_64.
+- *
+- *  It was brought to my attention that on EM64T compiler-generated code
+- *  was far behind 32-bit assembler implementation. This is unlike on
+- *  Opteron where compiler-generated code was only 15% behind 32-bit
+- *  assembler, which originally made it hard to motivate the effort.
+- *  There was suggestion to mechanically translate 32-bit code, but I
+- *  dismissed it, reasoning that x86_64 offers enough register bank
+- *  capacity to fully utilize SHA-1 parallelism. Therefore this fresh
+- *  implementation:-) However! While 64-bit code does performs better
+- *  on Opteron, I failed to beat 32-bit assembler on EM64T core. Well,
+- *  x86_64 does offer larger *addressable* bank, but out-of-order core
+- *  reaches for even more registers through dynamic aliasing, and EM64T
+- *  core must have managed to run-time optimize even 32-bit code just as
+- *  good as 64-bit one. Performance improvement is summarized in the
+- *  following table:
+- *
+- * 		gcc 3.4		32-bit asm	cycles/byte
+- *  Opteron	+45%		+20%		6.8
+- *  Xeon P4	+65%		+0%		9.9
+- *  Core2		+60%		+10%		7.0
+- *
+- *
+- *  OpenSolaris OS modifications
+- *
+- *  Sun elects to use this software under the BSD license.
+- *
+- *  This source originates from OpenSSL file sha1-x86_64.pl at
+- *  ftp://ftp.openssl.org/snapshot/openssl-0.9.8-stable-SNAP-20080131.tar.gz
+- *  (presumably for future OpenSSL release 0.9.8h), with these changes:
+- *
+- *  1. Added perl "use strict" and declared variables.
+- *
+- *  2. Added OpenSolaris ENTRY_NP/SET_SIZE macros from
+- *  /usr/include/sys/asm_linkage.h, .ident keywords, and lint(1B) guards.
+- *
+- *  3. Removed x86_64-xlate.pl script (not needed for as(1) or gas(1)
+- *  assemblers).
+- *
+- */
+-
+-/*
+- * This file was generated by a perl script (sha1-x86_64.pl). The comments from
+- * the original file have been pasted above.
+- */
+-
+-#if defined(lint) || defined(__lint)
+-#include <sys/stdint.h>
+-#include <sys/sha1.h>
+-
+-
+-/* ARGSUSED */
+-void
+-sha1_block_data_order(SHA1_CTX *ctx, const void *inpp, size_t blocks)
+-{
+-}
+-
+-#else
+-#define _ASM
+-#include <sys/asm_linkage.h>
+-ENTRY_NP(sha1_block_data_order)
+-	push	%rbx
+-	push	%rbp
+-	push	%r12
+-	mov	%rsp,%rax
+-	mov	%rdi,%r8	# reassigned argument
+-	sub	$72,%rsp
+-	mov	%rsi,%r9	# reassigned argument
+-	and	$-64,%rsp
+-	mov	%rdx,%r10	# reassigned argument
+-	mov	%rax,64(%rsp)
+-
+-	mov	0(%r8),%edx
+-	mov	4(%r8),%esi
+-	mov	8(%r8),%edi
+-	mov	12(%r8),%ebp
+-	mov	16(%r8),%r11d
+-.align	4
+-.Lloop:
+-	mov	0(%r9),%eax
+-	bswap	%eax
+-	mov	%eax,0(%rsp)
+-	lea	0x5a827999(%eax,%r11d),%r12d
+-	mov	%edi,%ebx
+-	mov	4(%r9),%eax
+-	mov	%edx,%r11d
+-	xor	%ebp,%ebx
+-	bswap	%eax
+-	rol	$5,%r11d
+-	and	%esi,%ebx
+-	mov	%eax,4(%rsp)
+-	add	%r11d,%r12d
+-	xor	%ebp,%ebx
+-	rol	$30,%esi
+-	add	%ebx,%r12d
+-	lea	0x5a827999(%eax,%ebp),%r11d
+-	mov	%esi,%ebx
+-	mov	8(%r9),%eax
+-	mov	%r12d,%ebp
+-	xor	%edi,%ebx
+-	bswap	%eax
+-	rol	$5,%ebp
+-	and	%edx,%ebx
+-	mov	%eax,8(%rsp)
+-	add	%ebp,%r11d
+-	xor	%edi,%ebx
+-	rol	$30,%edx
+-	add	%ebx,%r11d
+-	lea	0x5a827999(%eax,%edi),%ebp
+-	mov	%edx,%ebx
+-	mov	12(%r9),%eax
+-	mov	%r11d,%edi
+-	xor	%esi,%ebx
+-	bswap	%eax
+-	rol	$5,%edi
+-	and	%r12d,%ebx
+-	mov	%eax,12(%rsp)
+-	add	%edi,%ebp
+-	xor	%esi,%ebx
+-	rol	$30,%r12d
+-	add	%ebx,%ebp
+-	lea	0x5a827999(%eax,%esi),%edi
+-	mov	%r12d,%ebx
+-	mov	16(%r9),%eax
+-	mov	%ebp,%esi
+-	xor	%edx,%ebx
+-	bswap	%eax
+-	rol	$5,%esi
+-	and	%r11d,%ebx
+-	mov	%eax,16(%rsp)
+-	add	%esi,%edi
+-	xor	%edx,%ebx
+-	rol	$30,%r11d
+-	add	%ebx,%edi
+-	lea	0x5a827999(%eax,%edx),%esi
+-	mov	%r11d,%ebx
+-	mov	20(%r9),%eax
+-	mov	%edi,%edx
+-	xor	%r12d,%ebx
+-	bswap	%eax
+-	rol	$5,%edx
+-	and	%ebp,%ebx
+-	mov	%eax,20(%rsp)
+-	add	%edx,%esi
+-	xor	%r12d,%ebx
+-	rol	$30,%ebp
+-	add	%ebx,%esi
+-	lea	0x5a827999(%eax,%r12d),%edx
+-	mov	%ebp,%ebx
+-	mov	24(%r9),%eax
+-	mov	%esi,%r12d
+-	xor	%r11d,%ebx
+-	bswap	%eax
+-	rol	$5,%r12d
+-	and	%edi,%ebx
+-	mov	%eax,24(%rsp)
+-	add	%r12d,%edx
+-	xor	%r11d,%ebx
+-	rol	$30,%edi
+-	add	%ebx,%edx
+-	lea	0x5a827999(%eax,%r11d),%r12d
+-	mov	%edi,%ebx
+-	mov	28(%r9),%eax
+-	mov	%edx,%r11d
+-	xor	%ebp,%ebx
+-	bswap	%eax
+-	rol	$5,%r11d
+-	and	%esi,%ebx
+-	mov	%eax,28(%rsp)
+-	add	%r11d,%r12d
+-	xor	%ebp,%ebx
+-	rol	$30,%esi
+-	add	%ebx,%r12d
+-	lea	0x5a827999(%eax,%ebp),%r11d
+-	mov	%esi,%ebx
+-	mov	32(%r9),%eax
+-	mov	%r12d,%ebp
+-	xor	%edi,%ebx
+-	bswap	%eax
+-	rol	$5,%ebp
+-	and	%edx,%ebx
+-	mov	%eax,32(%rsp)
+-	add	%ebp,%r11d
+-	xor	%edi,%ebx
+-	rol	$30,%edx
+-	add	%ebx,%r11d
+-	lea	0x5a827999(%eax,%edi),%ebp
+-	mov	%edx,%ebx
+-	mov	36(%r9),%eax
+-	mov	%r11d,%edi
+-	xor	%esi,%ebx
+-	bswap	%eax
+-	rol	$5,%edi
+-	and	%r12d,%ebx
+-	mov	%eax,36(%rsp)
+-	add	%edi,%ebp
+-	xor	%esi,%ebx
+-	rol	$30,%r12d
+-	add	%ebx,%ebp
+-	lea	0x5a827999(%eax,%esi),%edi
+-	mov	%r12d,%ebx
+-	mov	40(%r9),%eax
+-	mov	%ebp,%esi
+-	xor	%edx,%ebx
+-	bswap	%eax
+-	rol	$5,%esi
+-	and	%r11d,%ebx
+-	mov	%eax,40(%rsp)
+-	add	%esi,%edi
+-	xor	%edx,%ebx
+-	rol	$30,%r11d
+-	add	%ebx,%edi
+-	lea	0x5a827999(%eax,%edx),%esi
+-	mov	%r11d,%ebx
+-	mov	44(%r9),%eax
+-	mov	%edi,%edx
+-	xor	%r12d,%ebx
+-	bswap	%eax
+-	rol	$5,%edx
+-	and	%ebp,%ebx
+-	mov	%eax,44(%rsp)
+-	add	%edx,%esi
+-	xor	%r12d,%ebx
+-	rol	$30,%ebp
+-	add	%ebx,%esi
+-	lea	0x5a827999(%eax,%r12d),%edx
+-	mov	%ebp,%ebx
+-	mov	48(%r9),%eax
+-	mov	%esi,%r12d
+-	xor	%r11d,%ebx
+-	bswap	%eax
+-	rol	$5,%r12d
+-	and	%edi,%ebx
+-	mov	%eax,48(%rsp)
+-	add	%r12d,%edx
+-	xor	%r11d,%ebx
+-	rol	$30,%edi
+-	add	%ebx,%edx
+-	lea	0x5a827999(%eax,%r11d),%r12d
+-	mov	%edi,%ebx
+-	mov	52(%r9),%eax
+-	mov	%edx,%r11d
+-	xor	%ebp,%ebx
+-	bswap	%eax
+-	rol	$5,%r11d
+-	and	%esi,%ebx
+-	mov	%eax,52(%rsp)
+-	add	%r11d,%r12d
+-	xor	%ebp,%ebx
+-	rol	$30,%esi
+-	add	%ebx,%r12d
+-	lea	0x5a827999(%eax,%ebp),%r11d
+-	mov	%esi,%ebx
+-	mov	56(%r9),%eax
+-	mov	%r12d,%ebp
+-	xor	%edi,%ebx
+-	bswap	%eax
+-	rol	$5,%ebp
+-	and	%edx,%ebx
+-	mov	%eax,56(%rsp)
+-	add	%ebp,%r11d
+-	xor	%edi,%ebx
+-	rol	$30,%edx
+-	add	%ebx,%r11d
+-	lea	0x5a827999(%eax,%edi),%ebp
+-	mov	%edx,%ebx
+-	mov	60(%r9),%eax
+-	mov	%r11d,%edi
+-	xor	%esi,%ebx
+-	bswap	%eax
+-	rol	$5,%edi
+-	and	%r12d,%ebx
+-	mov	%eax,60(%rsp)
+-	add	%edi,%ebp
+-	xor	%esi,%ebx
+-	rol	$30,%r12d
+-	add	%ebx,%ebp
+-	lea	0x5a827999(%eax,%esi),%edi
+-	mov	0(%rsp),%eax
+-	mov	%r12d,%ebx
+-	mov	%ebp,%esi
+-	xor	8(%rsp),%eax
+-	xor	%edx,%ebx
+-	rol	$5,%esi
+-	xor	32(%rsp),%eax
+-	and	%r11d,%ebx
+-	add	%esi,%edi
+-	xor	52(%rsp),%eax
+-	xor	%edx,%ebx
+-	rol	$30,%r11d
+-	add	%ebx,%edi
+-	rol	$1,%eax
+-	mov	%eax,0(%rsp)
+-	lea	0x5a827999(%eax,%edx),%esi
+-	mov	4(%rsp),%eax
+-	mov	%r11d,%ebx
+-	mov	%edi,%edx
+-	xor	12(%rsp),%eax
+-	xor	%r12d,%ebx
+-	rol	$5,%edx
+-	xor	36(%rsp),%eax
+-	and	%ebp,%ebx
+-	add	%edx,%esi
+-	xor	56(%rsp),%eax
+-	xor	%r12d,%ebx
+-	rol	$30,%ebp
+-	add	%ebx,%esi
+-	rol	$1,%eax
+-	mov	%eax,4(%rsp)
+-	lea	0x5a827999(%eax,%r12d),%edx
+-	mov	8(%rsp),%eax
+-	mov	%ebp,%ebx
+-	mov	%esi,%r12d
+-	xor	16(%rsp),%eax
+-	xor	%r11d,%ebx
+-	rol	$5,%r12d
+-	xor	40(%rsp),%eax
+-	and	%edi,%ebx
+-	add	%r12d,%edx
+-	xor	60(%rsp),%eax
+-	xor	%r11d,%ebx
+-	rol	$30,%edi
+-	add	%ebx,%edx
+-	rol	$1,%eax
+-	mov	%eax,8(%rsp)
+-	lea	0x5a827999(%eax,%r11d),%r12d
+-	mov	12(%rsp),%eax
+-	mov	%edi,%ebx
+-	mov	%edx,%r11d
+-	xor	20(%rsp),%eax
+-	xor	%ebp,%ebx
+-	rol	$5,%r11d
+-	xor	44(%rsp),%eax
+-	and	%esi,%ebx
+-	add	%r11d,%r12d
+-	xor	0(%rsp),%eax
+-	xor	%ebp,%ebx
+-	rol	$30,%esi
+-	add	%ebx,%r12d
+-	rol	$1,%eax
+-	mov	%eax,12(%rsp)
+-	lea	0x5a827999(%eax,%ebp),%r11d
+-	mov	16(%rsp),%eax
+-	mov	%esi,%ebx
+-	mov	%r12d,%ebp
+-	xor	24(%rsp),%eax
+-	xor	%edi,%ebx
+-	rol	$5,%ebp
+-	xor	48(%rsp),%eax
+-	and	%edx,%ebx
+-	add	%ebp,%r11d
+-	xor	4(%rsp),%eax
+-	xor	%edi,%ebx
+-	rol	$30,%edx
+-	add	%ebx,%r11d
+-	rol	$1,%eax
+-	mov	%eax,16(%rsp)
+-	lea	0x6ed9eba1(%eax,%edi),%ebp
+-	mov	20(%rsp),%eax
+-	mov	%edx,%ebx
+-	mov	%r11d,%edi
+-	xor	28(%rsp),%eax
+-	xor	%r12d,%ebx
+-	rol	$5,%edi
+-	xor	52(%rsp),%eax
+-	xor	%esi,%ebx
+-	add	%edi,%ebp
+-	xor	8(%rsp),%eax
+-	rol	$30,%r12d
+-	add	%ebx,%ebp
+-	rol	$1,%eax
+-	mov	%eax,20(%rsp)
+-	lea	0x6ed9eba1(%eax,%esi),%edi
+-	mov	24(%rsp),%eax
+-	mov	%r12d,%ebx
+-	mov	%ebp,%esi
+-	xor	32(%rsp),%eax
+-	xor	%r11d,%ebx
+-	rol	$5,%esi
+-	xor	56(%rsp),%eax
+-	xor	%edx,%ebx
+-	add	%esi,%edi
+-	xor	12(%rsp),%eax
+-	rol	$30,%r11d
+-	add	%ebx,%edi
+-	rol	$1,%eax
+-	mov	%eax,24(%rsp)
+-	lea	0x6ed9eba1(%eax,%edx),%esi
+-	mov	28(%rsp),%eax
+-	mov	%r11d,%ebx
+-	mov	%edi,%edx
+-	xor	36(%rsp),%eax
+-	xor	%ebp,%ebx
+-	rol	$5,%edx
+-	xor	60(%rsp),%eax
+-	xor	%r12d,%ebx
+-	add	%edx,%esi
+-	xor	16(%rsp),%eax
+-	rol	$30,%ebp
+-	add	%ebx,%esi
+-	rol	$1,%eax
+-	mov	%eax,28(%rsp)
+-	lea	0x6ed9eba1(%eax,%r12d),%edx
+-	mov	32(%rsp),%eax
+-	mov	%ebp,%ebx
+-	mov	%esi,%r12d
+-	xor	40(%rsp),%eax
+-	xor	%edi,%ebx
+-	rol	$5,%r12d
+-	xor	0(%rsp),%eax
+-	xor	%r11d,%ebx
+-	add	%r12d,%edx
+-	xor	20(%rsp),%eax
+-	rol	$30,%edi
+-	add	%ebx,%edx
+-	rol	$1,%eax
+-	mov	%eax,32(%rsp)
+-	lea	0x6ed9eba1(%eax,%r11d),%r12d
+-	mov	36(%rsp),%eax
+-	mov	%edi,%ebx
+-	mov	%edx,%r11d
+-	xor	44(%rsp),%eax
+-	xor	%esi,%ebx
+-	rol	$5,%r11d
+-	xor	4(%rsp),%eax
+-	xor	%ebp,%ebx
+-	add	%r11d,%r12d
+-	xor	24(%rsp),%eax
+-	rol	$30,%esi
+-	add	%ebx,%r12d
+-	rol	$1,%eax
+-	mov	%eax,36(%rsp)
+-	lea	0x6ed9eba1(%eax,%ebp),%r11d
+-	mov	40(%rsp),%eax
+-	mov	%esi,%ebx
+-	mov	%r12d,%ebp
+-	xor	48(%rsp),%eax
+-	xor	%edx,%ebx
+-	rol	$5,%ebp
+-	xor	8(%rsp),%eax
+-	xor	%edi,%ebx
+-	add	%ebp,%r11d
+-	xor	28(%rsp),%eax
+-	rol	$30,%edx
+-	add	%ebx,%r11d
+-	rol	$1,%eax
+-	mov	%eax,40(%rsp)
+-	lea	0x6ed9eba1(%eax,%edi),%ebp
+-	mov	44(%rsp),%eax
+-	mov	%edx,%ebx
+-	mov	%r11d,%edi
+-	xor	52(%rsp),%eax
+-	xor	%r12d,%ebx
+-	rol	$5,%edi
+-	xor	12(%rsp),%eax
+-	xor	%esi,%ebx
+-	add	%edi,%ebp
+-	xor	32(%rsp),%eax
+-	rol	$30,%r12d
+-	add	%ebx,%ebp
+-	rol	$1,%eax
+-	mov	%eax,44(%rsp)
+-	lea	0x6ed9eba1(%eax,%esi),%edi
+-	mov	48(%rsp),%eax
+-	mov	%r12d,%ebx
+-	mov	%ebp,%esi
+-	xor	56(%rsp),%eax
+-	xor	%r11d,%ebx
+-	rol	$5,%esi
+-	xor	16(%rsp),%eax
+-	xor	%edx,%ebx
+-	add	%esi,%edi
+-	xor	36(%rsp),%eax
+-	rol	$30,%r11d
+-	add	%ebx,%edi
+-	rol	$1,%eax
+-	mov	%eax,48(%rsp)
+-	lea	0x6ed9eba1(%eax,%edx),%esi
+-	mov	52(%rsp),%eax
+-	mov	%r11d,%ebx
+-	mov	%edi,%edx
+-	xor	60(%rsp),%eax
+-	xor	%ebp,%ebx
+-	rol	$5,%edx
+-	xor	20(%rsp),%eax
+-	xor	%r12d,%ebx
+-	add	%edx,%esi
+-	xor	40(%rsp),%eax
+-	rol	$30,%ebp
+-	add	%ebx,%esi
+-	rol	$1,%eax
+-	mov	%eax,52(%rsp)
+-	lea	0x6ed9eba1(%eax,%r12d),%edx
+-	mov	56(%rsp),%eax
+-	mov	%ebp,%ebx
+-	mov	%esi,%r12d
+-	xor	0(%rsp),%eax
+-	xor	%edi,%ebx
+-	rol	$5,%r12d
+-	xor	24(%rsp),%eax
+-	xor	%r11d,%ebx
+-	add	%r12d,%edx
+-	xor	44(%rsp),%eax
+-	rol	$30,%edi
+-	add	%ebx,%edx
+-	rol	$1,%eax
+-	mov	%eax,56(%rsp)
+-	lea	0x6ed9eba1(%eax,%r11d),%r12d
+-	mov	60(%rsp),%eax
+-	mov	%edi,%ebx
+-	mov	%edx,%r11d
+-	xor	4(%rsp),%eax
+-	xor	%esi,%ebx
+-	rol	$5,%r11d
+-	xor	28(%rsp),%eax
+-	xor	%ebp,%ebx
+-	add	%r11d,%r12d
+-	xor	48(%rsp),%eax
+-	rol	$30,%esi
+-	add	%ebx,%r12d
+-	rol	$1,%eax
+-	mov	%eax,60(%rsp)
+-	lea	0x6ed9eba1(%eax,%ebp),%r11d
+-	mov	0(%rsp),%eax
+-	mov	%esi,%ebx
+-	mov	%r12d,%ebp
+-	xor	8(%rsp),%eax
+-	xor	%edx,%ebx
+-	rol	$5,%ebp
+-	xor	32(%rsp),%eax
+-	xor	%edi,%ebx
+-	add	%ebp,%r11d
+-	xor	52(%rsp),%eax
+-	rol	$30,%edx
+-	add	%ebx,%r11d
+-	rol	$1,%eax
+-	mov	%eax,0(%rsp)
+-	lea	0x6ed9eba1(%eax,%edi),%ebp
+-	mov	4(%rsp),%eax
+-	mov	%edx,%ebx
+-	mov	%r11d,%edi
+-	xor	12(%rsp),%eax
+-	xor	%r12d,%ebx
+-	rol	$5,%edi
+-	xor	36(%rsp),%eax
+-	xor	%esi,%ebx
+-	add	%edi,%ebp
+-	xor	56(%rsp),%eax
+-	rol	$30,%r12d
+-	add	%ebx,%ebp
+-	rol	$1,%eax
+-	mov	%eax,4(%rsp)
+-	lea	0x6ed9eba1(%eax,%esi),%edi
+-	mov	8(%rsp),%eax
+-	mov	%r12d,%ebx
+-	mov	%ebp,%esi
+-	xor	16(%rsp),%eax
+-	xor	%r11d,%ebx
+-	rol	$5,%esi
+-	xor	40(%rsp),%eax
+-	xor	%edx,%ebx
+-	add	%esi,%edi
+-	xor	60(%rsp),%eax
+-	rol	$30,%r11d
+-	add	%ebx,%edi
+-	rol	$1,%eax
+-	mov	%eax,8(%rsp)
+-	lea	0x6ed9eba1(%eax,%edx),%esi
+-	mov	12(%rsp),%eax
+-	mov	%r11d,%ebx
+-	mov	%edi,%edx
+-	xor	20(%rsp),%eax
+-	xor	%ebp,%ebx
+-	rol	$5,%edx
+-	xor	44(%rsp),%eax
+-	xor	%r12d,%ebx
+-	add	%edx,%esi
+-	xor	0(%rsp),%eax
+-	rol	$30,%ebp
+-	add	%ebx,%esi
+-	rol	$1,%eax
+-	mov	%eax,12(%rsp)
+-	lea	0x6ed9eba1(%eax,%r12d),%edx
+-	mov	16(%rsp),%eax
+-	mov	%ebp,%ebx
+-	mov	%esi,%r12d
+-	xor	24(%rsp),%eax
+-	xor	%edi,%ebx
+-	rol	$5,%r12d
+-	xor	48(%rsp),%eax
+-	xor	%r11d,%ebx
+-	add	%r12d,%edx
+-	xor	4(%rsp),%eax
+-	rol	$30,%edi
+-	add	%ebx,%edx
+-	rol	$1,%eax
+-	mov	%eax,16(%rsp)
+-	lea	0x6ed9eba1(%eax,%r11d),%r12d
+-	mov	20(%rsp),%eax
+-	mov	%edi,%ebx
+-	mov	%edx,%r11d
+-	xor	28(%rsp),%eax
+-	xor	%esi,%ebx
+-	rol	$5,%r11d
+-	xor	52(%rsp),%eax
+-	xor	%ebp,%ebx
+-	add	%r11d,%r12d
+-	xor	8(%rsp),%eax
+-	rol	$30,%esi
+-	add	%ebx,%r12d
+-	rol	$1,%eax
+-	mov	%eax,20(%rsp)
+-	lea	0x6ed9eba1(%eax,%ebp),%r11d
+-	mov	24(%rsp),%eax
+-	mov	%esi,%ebx
+-	mov	%r12d,%ebp
+-	xor	32(%rsp),%eax
+-	xor	%edx,%ebx
+-	rol	$5,%ebp
+-	xor	56(%rsp),%eax
+-	xor	%edi,%ebx
+-	add	%ebp,%r11d
+-	xor	12(%rsp),%eax
+-	rol	$30,%edx
+-	add	%ebx,%r11d
+-	rol	$1,%eax
+-	mov	%eax,24(%rsp)
+-	lea	0x6ed9eba1(%eax,%edi),%ebp
+-	mov	28(%rsp),%eax
+-	mov	%edx,%ebx
+-	mov	%r11d,%edi
+-	xor	36(%rsp),%eax
+-	xor	%r12d,%ebx
+-	rol	$5,%edi
+-	xor	60(%rsp),%eax
+-	xor	%esi,%ebx
+-	add	%edi,%ebp
+-	xor	16(%rsp),%eax
+-	rol	$30,%r12d
+-	add	%ebx,%ebp
+-	rol	$1,%eax
+-	mov	%eax,28(%rsp)
+-	lea	0x6ed9eba1(%eax,%esi),%edi
+-	mov	32(%rsp),%eax
+-	mov	%r12d,%ebx
+-	mov	%ebp,%esi
+-	xor	40(%rsp),%eax
+-	xor	%r11d,%ebx
+-	rol	$5,%esi
+-	xor	0(%rsp),%eax
+-	xor	%edx,%ebx
+-	add	%esi,%edi
+-	xor	20(%rsp),%eax
+-	rol	$30,%r11d
+-	add	%ebx,%edi
+-	rol	$1,%eax
+-	mov	%eax,32(%rsp)
+-	lea	-0x70e44324(%eax,%edx),%esi
+-	mov	36(%rsp),%eax
+-	mov	%ebp,%ebx
+-	mov	%ebp,%ecx
+-	xor	44(%rsp),%eax
+-	mov	%edi,%edx
+-	and	%r11d,%ebx
+-	xor	4(%rsp),%eax
+-	or	%r11d,%ecx
+-	rol	$5,%edx
+-	xor	24(%rsp),%eax
+-	and	%r12d,%ecx
+-	add	%edx,%esi
+-	rol	$1,%eax
+-	or	%ecx,%ebx
+-	rol	$30,%ebp
+-	mov	%eax,36(%rsp)
+-	add	%ebx,%esi
+-	lea	-0x70e44324(%eax,%r12d),%edx
+-	mov	40(%rsp),%eax
+-	mov	%edi,%ebx
+-	mov	%edi,%ecx
+-	xor	48(%rsp),%eax
+-	mov	%esi,%r12d
+-	and	%ebp,%ebx
+-	xor	8(%rsp),%eax
+-	or	%ebp,%ecx
+-	rol	$5,%r12d
+-	xor	28(%rsp),%eax
+-	and	%r11d,%ecx
+-	add	%r12d,%edx
+-	rol	$1,%eax
+-	or	%ecx,%ebx
+-	rol	$30,%edi
+-	mov	%eax,40(%rsp)
+-	add	%ebx,%edx
+-	lea	-0x70e44324(%eax,%r11d),%r12d
+-	mov	44(%rsp),%eax
+-	mov	%esi,%ebx
+-	mov	%esi,%ecx
+-	xor	52(%rsp),%eax
+-	mov	%edx,%r11d
+-	and	%edi,%ebx
+-	xor	12(%rsp),%eax
+-	or	%edi,%ecx
+-	rol	$5,%r11d
+-	xor	32(%rsp),%eax
+-	and	%ebp,%ecx
+-	add	%r11d,%r12d
+-	rol	$1,%eax
+-	or	%ecx,%ebx
+-	rol	$30,%esi
+-	mov	%eax,44(%rsp)
+-	add	%ebx,%r12d
+-	lea	-0x70e44324(%eax,%ebp),%r11d
+-	mov	48(%rsp),%eax
+-	mov	%edx,%ebx
+-	mov	%edx,%ecx
+-	xor	56(%rsp),%eax
+-	mov	%r12d,%ebp
+-	and	%esi,%ebx
+-	xor	16(%rsp),%eax
+-	or	%esi,%ecx
+-	rol	$5,%ebp
+-	xor	36(%rsp),%eax
+-	and	%edi,%ecx
+-	add	%ebp,%r11d
+-	rol	$1,%eax
+-	or	%ecx,%ebx
+-	rol	$30,%edx
+-	mov	%eax,48(%rsp)
+-	add	%ebx,%r11d
+-	lea	-0x70e44324(%eax,%edi),%ebp
+-	mov	52(%rsp),%eax
+-	mov	%r12d,%ebx
+-	mov	%r12d,%ecx
+-	xor	60(%rsp),%eax
+-	mov	%r11d,%edi
+-	and	%edx,%ebx
+-	xor	20(%rsp),%eax
+-	or	%edx,%ecx
+-	rol	$5,%edi
+-	xor	40(%rsp),%eax
+-	and	%esi,%ecx
+-	add	%edi,%ebp
+-	rol	$1,%eax
+-	or	%ecx,%ebx
+-	rol	$30,%r12d
+-	mov	%eax,52(%rsp)
+-	add	%ebx,%ebp
+-	lea	-0x70e44324(%eax,%esi),%edi
+-	mov	56(%rsp),%eax
+-	mov	%r11d,%ebx
+-	mov	%r11d,%ecx
+-	xor	0(%rsp),%eax
+-	mov	%ebp,%esi
+-	and	%r12d,%ebx
+-	xor	24(%rsp),%eax
+-	or	%r12d,%ecx
+-	rol	$5,%esi
+-	xor	44(%rsp),%eax
+-	and	%edx,%ecx
+-	add	%esi,%edi
+-	rol	$1,%eax
+-	or	%ecx,%ebx
+-	rol	$30,%r11d
+-	mov	%eax,56(%rsp)
+-	add	%ebx,%edi
+-	lea	-0x70e44324(%eax,%edx),%esi
+-	mov	60(%rsp),%eax
+-	mov	%ebp,%ebx
+-	mov	%ebp,%ecx
+-	xor	4(%rsp),%eax
+-	mov	%edi,%edx
+-	and	%r11d,%ebx
+-	xor	28(%rsp),%eax
+-	or	%r11d,%ecx
+-	rol	$5,%edx
+-	xor	48(%rsp),%eax
+-	and	%r12d,%ecx
+-	add	%edx,%esi
+-	rol	$1,%eax
+-	or	%ecx,%ebx
+-	rol	$30,%ebp
+-	mov	%eax,60(%rsp)
+-	add	%ebx,%esi
+-	lea	-0x70e44324(%eax,%r12d),%edx
+-	mov	0(%rsp),%eax
+-	mov	%edi,%ebx
+-	mov	%edi,%ecx
+-	xor	8(%rsp),%eax
+-	mov	%esi,%r12d
+-	and	%ebp,%ebx
+-	xor	32(%rsp),%eax
+-	or	%ebp,%ecx
+-	rol	$5,%r12d
+-	xor	52(%rsp),%eax
+-	and	%r11d,%ecx
+-	add	%r12d,%edx
+-	rol	$1,%eax
+-	or	%ecx,%ebx
+-	rol	$30,%edi
+-	mov	%eax,0(%rsp)
+-	add	%ebx,%edx
+-	lea	-0x70e44324(%eax,%r11d),%r12d
+-	mov	4(%rsp),%eax
+-	mov	%esi,%ebx
+-	mov	%esi,%ecx
+-	xor	12(%rsp),%eax
+-	mov	%edx,%r11d
+-	and	%edi,%ebx
+-	xor	36(%rsp),%eax
+-	or	%edi,%ecx
+-	rol	$5,%r11d
+-	xor	56(%rsp),%eax
+-	and	%ebp,%ecx
+-	add	%r11d,%r12d
+-	rol	$1,%eax
+-	or	%ecx,%ebx
+-	rol	$30,%esi
+-	mov	%eax,4(%rsp)
+-	add	%ebx,%r12d
+-	lea	-0x70e44324(%eax,%ebp),%r11d
+-	mov	8(%rsp),%eax
+-	mov	%edx,%ebx
+-	mov	%edx,%ecx
+-	xor	16(%rsp),%eax
+-	mov	%r12d,%ebp
+-	and	%esi,%ebx
+-	xor	40(%rsp),%eax
+-	or	%esi,%ecx
+-	rol	$5,%ebp
+-	xor	60(%rsp),%eax
+-	and	%edi,%ecx
+-	add	%ebp,%r11d
+-	rol	$1,%eax
+-	or	%ecx,%ebx
+-	rol	$30,%edx
+-	mov	%eax,8(%rsp)
+-	add	%ebx,%r11d
+-	lea	-0x70e44324(%eax,%edi),%ebp
+-	mov	12(%rsp),%eax
+-	mov	%r12d,%ebx
+-	mov	%r12d,%ecx
+-	xor	20(%rsp),%eax
+-	mov	%r11d,%edi
+-	and	%edx,%ebx
+-	xor	44(%rsp),%eax
+-	or	%edx,%ecx
+-	rol	$5,%edi
+-	xor	0(%rsp),%eax
+-	and	%esi,%ecx
+-	add	%edi,%ebp
+-	rol	$1,%eax
+-	or	%ecx,%ebx
+-	rol	$30,%r12d
+-	mov	%eax,12(%rsp)
+-	add	%ebx,%ebp
+-	lea	-0x70e44324(%eax,%esi),%edi
+-	mov	16(%rsp),%eax
+-	mov	%r11d,%ebx
+-	mov	%r11d,%ecx
+-	xor	24(%rsp),%eax
+-	mov	%ebp,%esi
+-	and	%r12d,%ebx
+-	xor	48(%rsp),%eax
+-	or	%r12d,%ecx
+-	rol	$5,%esi
+-	xor	4(%rsp),%eax
+-	and	%edx,%ecx
+-	add	%esi,%edi
+-	rol	$1,%eax
+-	or	%ecx,%ebx
+-	rol	$30,%r11d
+-	mov	%eax,16(%rsp)
+-	add	%ebx,%edi
+-	lea	-0x70e44324(%eax,%edx),%esi
+-	mov	20(%rsp),%eax
+-	mov	%ebp,%ebx
+-	mov	%ebp,%ecx
+-	xor	28(%rsp),%eax
+-	mov	%edi,%edx
+-	and	%r11d,%ebx
+-	xor	52(%rsp),%eax
+-	or	%r11d,%ecx
+-	rol	$5,%edx
+-	xor	8(%rsp),%eax
+-	and	%r12d,%ecx
+-	add	%edx,%esi
+-	rol	$1,%eax
+-	or	%ecx,%ebx
+-	rol	$30,%ebp
+-	mov	%eax,20(%rsp)
+-	add	%ebx,%esi
+-	lea	-0x70e44324(%eax,%r12d),%edx
+-	mov	24(%rsp),%eax
+-	mov	%edi,%ebx
+-	mov	%edi,%ecx
+-	xor	32(%rsp),%eax
+-	mov	%esi,%r12d
+-	and	%ebp,%ebx
+-	xor	56(%rsp),%eax
+-	or	%ebp,%ecx
+-	rol	$5,%r12d
+-	xor	12(%rsp),%eax
+-	and	%r11d,%ecx
+-	add	%r12d,%edx
+-	rol	$1,%eax
+-	or	%ecx,%ebx
+-	rol	$30,%edi
+-	mov	%eax,24(%rsp)
+-	add	%ebx,%edx
+-	lea	-0x70e44324(%eax,%r11d),%r12d
+-	mov	28(%rsp),%eax
+-	mov	%esi,%ebx
+-	mov	%esi,%ecx
+-	xor	36(%rsp),%eax
+-	mov	%edx,%r11d
+-	and	%edi,%ebx
+-	xor	60(%rsp),%eax
+-	or	%edi,%ecx
+-	rol	$5,%r11d
+-	xor	16(%rsp),%eax
+-	and	%ebp,%ecx
+-	add	%r11d,%r12d
+-	rol	$1,%eax
+-	or	%ecx,%ebx
+-	rol	$30,%esi
+-	mov	%eax,28(%rsp)
+-	add	%ebx,%r12d
+-	lea	-0x70e44324(%eax,%ebp),%r11d
+-	mov	32(%rsp),%eax
+-	mov	%edx,%ebx
+-	mov	%edx,%ecx
+-	xor	40(%rsp),%eax
+-	mov	%r12d,%ebp
+-	and	%esi,%ebx
+-	xor	0(%rsp),%eax
+-	or	%esi,%ecx
+-	rol	$5,%ebp
+-	xor	20(%rsp),%eax
+-	and	%edi,%ecx
+-	add	%ebp,%r11d
+-	rol	$1,%eax
+-	or	%ecx,%ebx
+-	rol	$30,%edx
+-	mov	%eax,32(%rsp)
+-	add	%ebx,%r11d
+-	lea	-0x70e44324(%eax,%edi),%ebp
+-	mov	36(%rsp),%eax
+-	mov	%r12d,%ebx
+-	mov	%r12d,%ecx
+-	xor	44(%rsp),%eax
+-	mov	%r11d,%edi
+-	and	%edx,%ebx
+-	xor	4(%rsp),%eax
+-	or	%edx,%ecx
+-	rol	$5,%edi
+-	xor	24(%rsp),%eax
+-	and	%esi,%ecx
+-	add	%edi,%ebp
+-	rol	$1,%eax
+-	or	%ecx,%ebx
+-	rol	$30,%r12d
+-	mov	%eax,36(%rsp)
+-	add	%ebx,%ebp
+-	lea	-0x70e44324(%eax,%esi),%edi
+-	mov	40(%rsp),%eax
+-	mov	%r11d,%ebx
+-	mov	%r11d,%ecx
+-	xor	48(%rsp),%eax
+-	mov	%ebp,%esi
+-	and	%r12d,%ebx
+-	xor	8(%rsp),%eax
+-	or	%r12d,%ecx
+-	rol	$5,%esi
+-	xor	28(%rsp),%eax
+-	and	%edx,%ecx
+-	add	%esi,%edi
+-	rol	$1,%eax
+-	or	%ecx,%ebx
+-	rol	$30,%r11d
+-	mov	%eax,40(%rsp)
+-	add	%ebx,%edi
+-	lea	-0x70e44324(%eax,%edx),%esi
+-	mov	44(%rsp),%eax
+-	mov	%ebp,%ebx
+-	mov	%ebp,%ecx
+-	xor	52(%rsp),%eax
+-	mov	%edi,%edx
+-	and	%r11d,%ebx
+-	xor	12(%rsp),%eax
+-	or	%r11d,%ecx
+-	rol	$5,%edx
+-	xor	32(%rsp),%eax
+-	and	%r12d,%ecx
+-	add	%edx,%esi
+-	rol	$1,%eax
+-	or	%ecx,%ebx
+-	rol	$30,%ebp
+-	mov	%eax,44(%rsp)
+-	add	%ebx,%esi
+-	lea	-0x70e44324(%eax,%r12d),%edx
+-	mov	48(%rsp),%eax
+-	mov	%edi,%ebx
+-	mov	%edi,%ecx
+-	xor	56(%rsp),%eax
+-	mov	%esi,%r12d
+-	and	%ebp,%ebx
+-	xor	16(%rsp),%eax
+-	or	%ebp,%ecx
+-	rol	$5,%r12d
+-	xor	36(%rsp),%eax
+-	and	%r11d,%ecx
+-	add	%r12d,%edx
+-	rol	$1,%eax
+-	or	%ecx,%ebx
+-	rol	$30,%edi
+-	mov	%eax,48(%rsp)
+-	add	%ebx,%edx
+-	lea	-0x359d3e2a(%eax,%r11d),%r12d
+-	mov	52(%rsp),%eax
+-	mov	%edi,%ebx
+-	mov	%edx,%r11d
+-	xor	60(%rsp),%eax
+-	xor	%esi,%ebx
+-	rol	$5,%r11d
+-	xor	20(%rsp),%eax
+-	xor	%ebp,%ebx
+-	add	%r11d,%r12d
+-	xor	40(%rsp),%eax
+-	rol	$30,%esi
+-	add	%ebx,%r12d
+-	rol	$1,%eax
+-	mov	%eax,52(%rsp)
+-	lea	-0x359d3e2a(%eax,%ebp),%r11d
+-	mov	56(%rsp),%eax
+-	mov	%esi,%ebx
+-	mov	%r12d,%ebp
+-	xor	0(%rsp),%eax
+-	xor	%edx,%ebx
+-	rol	$5,%ebp
+-	xor	24(%rsp),%eax
+-	xor	%edi,%ebx
+-	add	%ebp,%r11d
+-	xor	44(%rsp),%eax
+-	rol	$30,%edx
+-	add	%ebx,%r11d
+-	rol	$1,%eax
+-	mov	%eax,56(%rsp)
+-	lea	-0x359d3e2a(%eax,%edi),%ebp
+-	mov	60(%rsp),%eax
+-	mov	%edx,%ebx
+-	mov	%r11d,%edi
+-	xor	4(%rsp),%eax
+-	xor	%r12d,%ebx
+-	rol	$5,%edi
+-	xor	28(%rsp),%eax
+-	xor	%esi,%ebx
+-	add	%edi,%ebp
+-	xor	48(%rsp),%eax
+-	rol	$30,%r12d
+-	add	%ebx,%ebp
+-	rol	$1,%eax
+-	mov	%eax,60(%rsp)
+-	lea	-0x359d3e2a(%eax,%esi),%edi
+-	mov	0(%rsp),%eax
+-	mov	%r12d,%ebx
+-	mov	%ebp,%esi
+-	xor	8(%rsp),%eax
+-	xor	%r11d,%ebx
+-	rol	$5,%esi
+-	xor	32(%rsp),%eax
+-	xor	%edx,%ebx
+-	add	%esi,%edi
+-	xor	52(%rsp),%eax
+-	rol	$30,%r11d
+-	add	%ebx,%edi
+-	rol	$1,%eax
+-	mov	%eax,0(%rsp)
+-	lea	-0x359d3e2a(%eax,%edx),%esi
+-	mov	4(%rsp),%eax
+-	mov	%r11d,%ebx
+-	mov	%edi,%edx
+-	xor	12(%rsp),%eax
+-	xor	%ebp,%ebx
+-	rol	$5,%edx
+-	xor	36(%rsp),%eax
+-	xor	%r12d,%ebx
+-	add	%edx,%esi
+-	xor	56(%rsp),%eax
+-	rol	$30,%ebp
+-	add	%ebx,%esi
+-	rol	$1,%eax
+-	mov	%eax,4(%rsp)
+-	lea	-0x359d3e2a(%eax,%r12d),%edx
+-	mov	8(%rsp),%eax
+-	mov	%ebp,%ebx
+-	mov	%esi,%r12d
+-	xor	16(%rsp),%eax
+-	xor	%edi,%ebx
+-	rol	$5,%r12d
+-	xor	40(%rsp),%eax
+-	xor	%r11d,%ebx
+-	add	%r12d,%edx
+-	xor	60(%rsp),%eax
+-	rol	$30,%edi
+-	add	%ebx,%edx
+-	rol	$1,%eax
+-	mov	%eax,8(%rsp)
+-	lea	-0x359d3e2a(%eax,%r11d),%r12d
+-	mov	12(%rsp),%eax
+-	mov	%edi,%ebx
+-	mov	%edx,%r11d
+-	xor	20(%rsp),%eax
+-	xor	%esi,%ebx
+-	rol	$5,%r11d
+-	xor	44(%rsp),%eax
+-	xor	%ebp,%ebx
+-	add	%r11d,%r12d
+-	xor	0(%rsp),%eax
+-	rol	$30,%esi
+-	add	%ebx,%r12d
+-	rol	$1,%eax
+-	mov	%eax,12(%rsp)
+-	lea	-0x359d3e2a(%eax,%ebp),%r11d
+-	mov	16(%rsp),%eax
+-	mov	%esi,%ebx
+-	mov	%r12d,%ebp
+-	xor	24(%rsp),%eax
+-	xor	%edx,%ebx
+-	rol	$5,%ebp
+-	xor	48(%rsp),%eax
+-	xor	%edi,%ebx
+-	add	%ebp,%r11d
+-	xor	4(%rsp),%eax
+-	rol	$30,%edx
+-	add	%ebx,%r11d
+-	rol	$1,%eax
+-	mov	%eax,16(%rsp)
+-	lea	-0x359d3e2a(%eax,%edi),%ebp
+-	mov	20(%rsp),%eax
+-	mov	%edx,%ebx
+-	mov	%r11d,%edi
+-	xor	28(%rsp),%eax
+-	xor	%r12d,%ebx
+-	rol	$5,%edi
+-	xor	52(%rsp),%eax
+-	xor	%esi,%ebx
+-	add	%edi,%ebp
+-	xor	8(%rsp),%eax
+-	rol	$30,%r12d
+-	add	%ebx,%ebp
+-	rol	$1,%eax
+-	mov	%eax,20(%rsp)
+-	lea	-0x359d3e2a(%eax,%esi),%edi
+-	mov	24(%rsp),%eax
+-	mov	%r12d,%ebx
+-	mov	%ebp,%esi
+-	xor	32(%rsp),%eax
+-	xor	%r11d,%ebx
+-	rol	$5,%esi
+-	xor	56(%rsp),%eax
+-	xor	%edx,%ebx
+-	add	%esi,%edi
+-	xor	12(%rsp),%eax
+-	rol	$30,%r11d
+-	add	%ebx,%edi
+-	rol	$1,%eax
+-	mov	%eax,24(%rsp)
+-	lea	-0x359d3e2a(%eax,%edx),%esi
+-	mov	28(%rsp),%eax
+-	mov	%r11d,%ebx
+-	mov	%edi,%edx
+-	xor	36(%rsp),%eax
+-	xor	%ebp,%ebx
+-	rol	$5,%edx
+-	xor	60(%rsp),%eax
+-	xor	%r12d,%ebx
+-	add	%edx,%esi
+-	xor	16(%rsp),%eax
+-	rol	$30,%ebp
+-	add	%ebx,%esi
+-	rol	$1,%eax
+-	mov	%eax,28(%rsp)
+-	lea	-0x359d3e2a(%eax,%r12d),%edx
+-	mov	32(%rsp),%eax
+-	mov	%ebp,%ebx
+-	mov	%esi,%r12d
+-	xor	40(%rsp),%eax
+-	xor	%edi,%ebx
+-	rol	$5,%r12d
+-	xor	0(%rsp),%eax
+-	xor	%r11d,%ebx
+-	add	%r12d,%edx
+-	xor	20(%rsp),%eax
+-	rol	$30,%edi
+-	add	%ebx,%edx
+-	rol	$1,%eax
+-	mov	%eax,32(%rsp)
+-	lea	-0x359d3e2a(%eax,%r11d),%r12d
+-	mov	36(%rsp),%eax
+-	mov	%edi,%ebx
+-	mov	%edx,%r11d
+-	xor	44(%rsp),%eax
+-	xor	%esi,%ebx
+-	rol	$5,%r11d
+-	xor	4(%rsp),%eax
+-	xor	%ebp,%ebx
+-	add	%r11d,%r12d
+-	xor	24(%rsp),%eax
+-	rol	$30,%esi
+-	add	%ebx,%r12d
+-	rol	$1,%eax
+-	mov	%eax,36(%rsp)
+-	lea	-0x359d3e2a(%eax,%ebp),%r11d
+-	mov	40(%rsp),%eax
+-	mov	%esi,%ebx
+-	mov	%r12d,%ebp
+-	xor	48(%rsp),%eax
+-	xor	%edx,%ebx
+-	rol	$5,%ebp
+-	xor	8(%rsp),%eax
+-	xor	%edi,%ebx
+-	add	%ebp,%r11d
+-	xor	28(%rsp),%eax
+-	rol	$30,%edx
+-	add	%ebx,%r11d
+-	rol	$1,%eax
+-	mov	%eax,40(%rsp)
+-	lea	-0x359d3e2a(%eax,%edi),%ebp
+-	mov	44(%rsp),%eax
+-	mov	%edx,%ebx
+-	mov	%r11d,%edi
+-	xor	52(%rsp),%eax
+-	xor	%r12d,%ebx
+-	rol	$5,%edi
+-	xor	12(%rsp),%eax
+-	xor	%esi,%ebx
+-	add	%edi,%ebp
+-	xor	32(%rsp),%eax
+-	rol	$30,%r12d
+-	add	%ebx,%ebp
+-	rol	$1,%eax
+-	mov	%eax,44(%rsp)
+-	lea	-0x359d3e2a(%eax,%esi),%edi
+-	mov	48(%rsp),%eax
+-	mov	%r12d,%ebx
+-	mov	%ebp,%esi
+-	xor	56(%rsp),%eax
+-	xor	%r11d,%ebx
+-	rol	$5,%esi
+-	xor	16(%rsp),%eax
+-	xor	%edx,%ebx
+-	add	%esi,%edi
+-	xor	36(%rsp),%eax
+-	rol	$30,%r11d
+-	add	%ebx,%edi
+-	rol	$1,%eax
+-	mov	%eax,48(%rsp)
+-	lea	-0x359d3e2a(%eax,%edx),%esi
+-	mov	52(%rsp),%eax
+-	mov	%r11d,%ebx
+-	mov	%edi,%edx
+-	xor	60(%rsp),%eax
+-	xor	%ebp,%ebx
+-	rol	$5,%edx
+-	xor	20(%rsp),%eax
+-	xor	%r12d,%ebx
+-	add	%edx,%esi
+-	xor	40(%rsp),%eax
+-	rol	$30,%ebp
+-	add	%ebx,%esi
+-	rol	$1,%eax
+-	lea	-0x359d3e2a(%eax,%r12d),%edx
+-	mov	56(%rsp),%eax
+-	mov	%ebp,%ebx
+-	mov	%esi,%r12d
+-	xor	0(%rsp),%eax
+-	xor	%edi,%ebx
+-	rol	$5,%r12d
+-	xor	24(%rsp),%eax
+-	xor	%r11d,%ebx
+-	add	%r12d,%edx
+-	xor	44(%rsp),%eax
+-	rol	$30,%edi
+-	add	%ebx,%edx
+-	rol	$1,%eax
+-	lea	-0x359d3e2a(%eax,%r11d),%r12d
+-	mov	60(%rsp),%eax
+-	mov	%edi,%ebx
+-	mov	%edx,%r11d
+-	xor	4(%rsp),%eax
+-	xor	%esi,%ebx
+-	rol	$5,%r11d
+-	xor	28(%rsp),%eax
+-	xor	%ebp,%ebx
+-	add	%r11d,%r12d
+-	xor	48(%rsp),%eax
+-	rol	$30,%esi
+-	add	%ebx,%r12d
+-	rol	$1,%eax
+-	lea	-0x359d3e2a(%eax,%ebp),%r11d
+-	mov	%esi,%ebx
+-	mov	%r12d,%ebp
+-	xor	%edx,%ebx
+-	rol	$5,%ebp
+-	xor	%edi,%ebx
+-	add	%ebp,%r11d
+-	rol	$30,%edx
+-	add	%ebx,%r11d
+-	// Update and save state information in SHA-1 context
+-	add	0(%r8),%r11d
+-	add	4(%r8),%r12d
+-	add	8(%r8),%edx
+-	add	12(%r8),%esi
+-	add	16(%r8),%edi
+-	mov	%r11d,0(%r8)
+-	mov	%r12d,4(%r8)
+-	mov	%edx,8(%r8)
+-	mov	%esi,12(%r8)
+-	mov	%edi,16(%r8)
+-
+-	xchg	%r11d,%edx	# mov	%r11d,%edx
+-	xchg	%r12d,%esi	# mov	%r12d,%esi
+-	xchg	%r11d,%edi	# mov	%edx,%edi
+-	xchg	%r12d,%ebp	# mov	%esi,%ebp
+-			# mov	%edi,%r11d
+-	lea	64(%r9),%r9
+-	sub	$1,%r10
+-	jnz	.Lloop
+-	mov	64(%rsp),%rsp
+-	pop	%r12
+-	pop	%rbp
+-	pop	%rbx
+-	ret
+-SET_SIZE(sha1_block_data_order)
+-
+-.data
+-.asciz	"SHA1 block transform for x86_64, CRYPTOGAMS by <appro@openssl.org>"
+-
+-#endif /* lint || __lint */
+-
+-#ifdef __ELF__
+-.section .note.GNU-stack,"",%progbits
+-#endif
+diff --git a/module/icp/illumos-crypto.c b/module/icp/illumos-crypto.c
+index 3c5ef43939..cc990f1aeb 100644
+--- a/module/icp/illumos-crypto.c
++++ b/module/icp/illumos-crypto.c
+@@ -111,7 +111,6 @@ icp_fini(void)
+ {
+ 	skein_mod_fini();
+ 	sha2_mod_fini();
+-	sha1_mod_fini();
+ 	edonr_mod_fini();
+ 	aes_mod_fini();
+ 	kcf_sched_destroy();
+@@ -142,7 +141,6 @@ icp_init(void)
+ 	/* initialize algorithms */
+ 	aes_mod_init();
+ 	edonr_mod_init();
+-	sha1_mod_init();
+ 	sha2_mod_init();
+ 	skein_mod_init();
+ 
+diff --git a/module/icp/include/sha1/sha1.h b/module/icp/include/sha1/sha1.h
+deleted file mode 100644
+index 251b64fcae..0000000000
+--- a/module/icp/include/sha1/sha1.h
++++ /dev/null
+@@ -1,61 +0,0 @@
+-/*
+- * CDDL HEADER START
+- *
+- * The contents of this file are subject to the terms of the
+- * Common Development and Distribution License (the "License").
+- * You may not use this file except in compliance with the License.
+- *
+- * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
+- * or http://www.opensolaris.org/os/licensing.
+- * See the License for the specific language governing permissions
+- * and limitations under the License.
+- *
+- * When distributing Covered Code, include this CDDL HEADER in each
+- * file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+- * If applicable, add the following below this CDDL HEADER, with the
+- * fields enclosed by brackets "[]" replaced with your own identifying
+- * information: Portions Copyright [yyyy] [name of copyright owner]
+- *
+- * CDDL HEADER END
+- */
+-/*
+- * Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
+- * Use is subject to license terms.
+- */
+-
+-#ifndef _SYS_SHA1_H
+-#define	_SYS_SHA1_H
+-
+-#include <sys/types.h>		/* for uint_* */
+-
+-#ifdef	__cplusplus
+-extern "C" {
+-#endif
+-
+-/*
+- * NOTE: n2rng (Niagara2 RNG driver) accesses the state field of
+- * SHA1_CTX directly.  NEVER change this structure without verifying
+- * compatibility with n2rng.  The important thing is that the state
+- * must be in a field declared as uint32_t state[5].
+- */
+-/* SHA-1 context. */
+-typedef struct 	{
+-	uint32_t state[5];	/* state (ABCDE) */
+-	uint32_t count[2];	/* number of bits, modulo 2^64 (msb first) */
+-	union 	{
+-		uint8_t		buf8[64];	/* undigested input */
+-		uint32_t	buf32[16];	/* realigned input */
+-	} buf_un;
+-} SHA1_CTX;
+-
+-#define	SHA1_DIGEST_LENGTH 20
+-
+-void SHA1Init(SHA1_CTX *);
+-void SHA1Update(SHA1_CTX *, const void *, size_t);
+-void SHA1Final(void *, SHA1_CTX *);
+-
+-#ifdef	__cplusplus
+-}
+-#endif
+-
+-#endif /* _SYS_SHA1_H */
+diff --git a/module/icp/include/sha1/sha1_consts.h b/module/icp/include/sha1/sha1_consts.h
+deleted file mode 100644
+index 848d25ef05..0000000000
+--- a/module/icp/include/sha1/sha1_consts.h
++++ /dev/null
+@@ -1,65 +0,0 @@
+-/*
+- * CDDL HEADER START
+- *
+- * The contents of this file are subject to the terms of the
+- * Common Development and Distribution License, Version 1.0 only
+- * (the "License").  You may not use this file except in compliance
+- * with the License.
+- *
+- * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
+- * or http://www.opensolaris.org/os/licensing.
+- * See the License for the specific language governing permissions
+- * and limitations under the License.
+- *
+- * When distributing Covered Code, include this CDDL HEADER in each
+- * file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+- * If applicable, add the following below this CDDL HEADER, with the
+- * fields enclosed by brackets "[]" replaced with your own identifying
+- * information: Portions Copyright [yyyy] [name of copyright owner]
+- *
+- * CDDL HEADER END
+- */
+-/*
+- * Copyright (c) 1998, by Sun Microsystems, Inc.
+- * All rights reserved.
+- */
+-
+-#ifndef	_SYS_SHA1_CONSTS_H
+-#define	_SYS_SHA1_CONSTS_H
+-
+-#ifdef	__cplusplus
+-extern "C" {
+-#endif
+-
+-/*
+- * as explained in sha1.c, loading 32-bit constants on a sparc is expensive
+- * since it involves both a `sethi' and an `or'.  thus, we instead use `ld'
+- * to load the constants from an array called `sha1_consts'.  however, on
+- * intel (and perhaps other processors), it is cheaper to load the constant
+- * directly.  thus, the c code in SHA1Transform() uses the macro SHA1_CONST()
+- * which either expands to a constant or an array reference, depending on
+- * the architecture the code is being compiled for.
+- */
+-
+-#include <sys/types.h>		/* uint32_t */
+-
+-extern	const uint32_t	sha1_consts[];
+-
+-#if	defined(__sparc)
+-#define	SHA1_CONST(x)		(sha1_consts[x])
+-#else
+-#define	SHA1_CONST(x)		(SHA1_CONST_ ## x)
+-#endif
+-
+-/* constants, as provided in FIPS 180-1 */
+-
+-#define	SHA1_CONST_0		0x5a827999U
+-#define	SHA1_CONST_1		0x6ed9eba1U
+-#define	SHA1_CONST_2		0x8f1bbcdcU
+-#define	SHA1_CONST_3		0xca62c1d6U
+-
+-#ifdef	__cplusplus
+-}
+-#endif
+-
+-#endif /* _SYS_SHA1_CONSTS_H */
+diff --git a/module/icp/include/sha1/sha1_impl.h b/module/icp/include/sha1/sha1_impl.h
+deleted file mode 100644
+index 1c1f8728f9..0000000000
+--- a/module/icp/include/sha1/sha1_impl.h
++++ /dev/null
+@@ -1,73 +0,0 @@
+-/*
+- * CDDL HEADER START
+- *
+- * The contents of this file are subject to the terms of the
+- * Common Development and Distribution License (the "License").
+- * You may not use this file except in compliance with the License.
+- *
+- * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
+- * or http://www.opensolaris.org/os/licensing.
+- * See the License for the specific language governing permissions
+- * and limitations under the License.
+- *
+- * When distributing Covered Code, include this CDDL HEADER in each
+- * file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+- * If applicable, add the following below this CDDL HEADER, with the
+- * fields enclosed by brackets "[]" replaced with your own identifying
+- * information: Portions Copyright [yyyy] [name of copyright owner]
+- *
+- * CDDL HEADER END
+- */
+-/*
+- * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
+- * Use is subject to license terms.
+- */
+-
+-#ifndef	_SHA1_IMPL_H
+-#define	_SHA1_IMPL_H
+-
+-
+-#ifdef __cplusplus
+-extern "C" {
+-#endif
+-
+-#define	SHA1_HASH_SIZE		20	/* SHA_1 digest length in bytes */
+-#define	SHA1_DIGEST_LENGTH	20	/* SHA1 digest length in bytes */
+-#define	SHA1_HMAC_BLOCK_SIZE	64	/* SHA1-HMAC block size */
+-#define	SHA1_HMAC_MIN_KEY_LEN	1	/* SHA1-HMAC min key length in bytes */
+-#define	SHA1_HMAC_MAX_KEY_LEN	INT_MAX /* SHA1-HMAC max key length in bytes */
+-#define	SHA1_HMAC_INTS_PER_BLOCK	(SHA1_HMAC_BLOCK_SIZE/sizeof (uint32_t))
+-
+-/*
+- * CSPI information (entry points, provider info, etc.)
+- */
+-typedef enum sha1_mech_type {
+-	SHA1_MECH_INFO_TYPE,		/* SUN_CKM_SHA1 */
+-	SHA1_HMAC_MECH_INFO_TYPE,	/* SUN_CKM_SHA1_HMAC */
+-	SHA1_HMAC_GEN_MECH_INFO_TYPE	/* SUN_CKM_SHA1_HMAC_GENERAL */
+-} sha1_mech_type_t;
+-
+-/*
+- * Context for SHA1 mechanism.
+- */
+-typedef struct sha1_ctx {
+-	sha1_mech_type_t	sc_mech_type;	/* type of context */
+-	SHA1_CTX		sc_sha1_ctx;	/* SHA1 context */
+-} sha1_ctx_t;
+-
+-/*
+- * Context for SHA1-HMAC and SHA1-HMAC-GENERAL mechanisms.
+- */
+-typedef struct sha1_hmac_ctx {
+-	sha1_mech_type_t	hc_mech_type;	/* type of context */
+-	uint32_t		hc_digest_len;	/* digest len in bytes */
+-	SHA1_CTX		hc_icontext;	/* inner SHA1 context */
+-	SHA1_CTX		hc_ocontext;	/* outer SHA1 context */
+-} sha1_hmac_ctx_t;
+-
+-
+-#ifdef	__cplusplus
+-}
+-#endif
+-
+-#endif /* _SHA1_IMPL_H */
+diff --git a/module/icp/io/sha1_mod.c b/module/icp/io/sha1_mod.c
+deleted file mode 100644
+index 6dcee6b2ec..0000000000
+--- a/module/icp/io/sha1_mod.c
++++ /dev/null
+@@ -1,1230 +0,0 @@
+-/*
+- * CDDL HEADER START
+- *
+- * The contents of this file are subject to the terms of the
+- * Common Development and Distribution License (the "License").
+- * You may not use this file except in compliance with the License.
+- *
+- * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
+- * or http://www.opensolaris.org/os/licensing.
+- * See the License for the specific language governing permissions
+- * and limitations under the License.
+- *
+- * When distributing Covered Code, include this CDDL HEADER in each
+- * file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+- * If applicable, add the following below this CDDL HEADER, with the
+- * fields enclosed by brackets "[]" replaced with your own identifying
+- * information: Portions Copyright [yyyy] [name of copyright owner]
+- *
+- * CDDL HEADER END
+- */
+-
+-/*
+- * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
+- * Use is subject to license terms.
+- */
+-
+-#include <sys/zfs_context.h>
+-#include <sys/modctl.h>
+-#include <sys/crypto/common.h>
+-#include <sys/crypto/icp.h>
+-#include <sys/crypto/spi.h>
+-
+-#include <sha1/sha1.h>
+-#include <sha1/sha1_impl.h>
+-
+-/*
+- * The sha1 module is created with two modlinkages:
+- * - a modlmisc that allows consumers to directly call the entry points
+- *   SHA1Init, SHA1Update, and SHA1Final.
+- * - a modlcrypto that allows the module to register with the Kernel
+- *   Cryptographic Framework (KCF) as a software provider for the SHA1
+- *   mechanisms.
+- */
+-
+-static struct modlcrypto modlcrypto = {
+-	&mod_cryptoops,
+-	"SHA1 Kernel SW Provider 1.1"
+-};
+-
+-static struct modlinkage modlinkage = {
+-	MODREV_1, { &modlcrypto, NULL }
+-};
+-
+-
+-/*
+- * Macros to access the SHA1 or SHA1-HMAC contexts from a context passed
+- * by KCF to one of the entry points.
+- */
+-
+-#define	PROV_SHA1_CTX(ctx)	((sha1_ctx_t *)(ctx)->cc_provider_private)
+-#define	PROV_SHA1_HMAC_CTX(ctx)	((sha1_hmac_ctx_t *)(ctx)->cc_provider_private)
+-
+-/* to extract the digest length passed as mechanism parameter */
+-#define	PROV_SHA1_GET_DIGEST_LEN(m, len) {				\
+-	if (IS_P2ALIGNED((m)->cm_param, sizeof (ulong_t)))		\
+-		(len) = (uint32_t)*((ulong_t *)(void *)mechanism->cm_param); \
+-	else {								\
+-		ulong_t tmp_ulong;					\
+-		bcopy((m)->cm_param, &tmp_ulong, sizeof (ulong_t));	\
+-		(len) = (uint32_t)tmp_ulong;				\
+-	}								\
+-}
+-
+-#define	PROV_SHA1_DIGEST_KEY(ctx, key, len, digest) {	\
+-	SHA1Init(ctx);					\
+-	SHA1Update(ctx, key, len);			\
+-	SHA1Final(digest, ctx);				\
+-}
+-
+-/*
+- * Mechanism info structure passed to KCF during registration.
+- */
+-static crypto_mech_info_t sha1_mech_info_tab[] = {
+-	/* SHA1 */
+-	{SUN_CKM_SHA1, SHA1_MECH_INFO_TYPE,
+-	    CRYPTO_FG_DIGEST | CRYPTO_FG_DIGEST_ATOMIC,
+-	    0, 0, CRYPTO_KEYSIZE_UNIT_IN_BITS},
+-	/* SHA1-HMAC */
+-	{SUN_CKM_SHA1_HMAC, SHA1_HMAC_MECH_INFO_TYPE,
+-	    CRYPTO_FG_MAC | CRYPTO_FG_MAC_ATOMIC,
+-	    SHA1_HMAC_MIN_KEY_LEN, SHA1_HMAC_MAX_KEY_LEN,
+-	    CRYPTO_KEYSIZE_UNIT_IN_BYTES},
+-	/* SHA1-HMAC GENERAL */
+-	{SUN_CKM_SHA1_HMAC_GENERAL, SHA1_HMAC_GEN_MECH_INFO_TYPE,
+-	    CRYPTO_FG_MAC | CRYPTO_FG_MAC_ATOMIC,
+-	    SHA1_HMAC_MIN_KEY_LEN, SHA1_HMAC_MAX_KEY_LEN,
+-	    CRYPTO_KEYSIZE_UNIT_IN_BYTES}
+-};
+-
+-static void sha1_provider_status(crypto_provider_handle_t, uint_t *);
+-
+-static crypto_control_ops_t sha1_control_ops = {
+-	sha1_provider_status
+-};
+-
+-static int sha1_digest_init(crypto_ctx_t *, crypto_mechanism_t *,
+-    crypto_req_handle_t);
+-static int sha1_digest(crypto_ctx_t *, crypto_data_t *, crypto_data_t *,
+-    crypto_req_handle_t);
+-static int sha1_digest_update(crypto_ctx_t *, crypto_data_t *,
+-    crypto_req_handle_t);
+-static int sha1_digest_final(crypto_ctx_t *, crypto_data_t *,
+-    crypto_req_handle_t);
+-static int sha1_digest_atomic(crypto_provider_handle_t, crypto_session_id_t,
+-    crypto_mechanism_t *, crypto_data_t *, crypto_data_t *,
+-    crypto_req_handle_t);
+-
+-static crypto_digest_ops_t sha1_digest_ops = {
+-	.digest_init = sha1_digest_init,
+-	.digest = sha1_digest,
+-	.digest_update = sha1_digest_update,
+-	.digest_key = NULL,
+-	.digest_final = sha1_digest_final,
+-	.digest_atomic = sha1_digest_atomic
+-};
+-
+-static int sha1_mac_init(crypto_ctx_t *, crypto_mechanism_t *, crypto_key_t *,
+-    crypto_spi_ctx_template_t, crypto_req_handle_t);
+-static int sha1_mac_update(crypto_ctx_t *, crypto_data_t *,
+-    crypto_req_handle_t);
+-static int sha1_mac_final(crypto_ctx_t *, crypto_data_t *, crypto_req_handle_t);
+-static int sha1_mac_atomic(crypto_provider_handle_t, crypto_session_id_t,
+-    crypto_mechanism_t *, crypto_key_t *, crypto_data_t *, crypto_data_t *,
+-    crypto_spi_ctx_template_t, crypto_req_handle_t);
+-static int sha1_mac_verify_atomic(crypto_provider_handle_t, crypto_session_id_t,
+-    crypto_mechanism_t *, crypto_key_t *, crypto_data_t *, crypto_data_t *,
+-    crypto_spi_ctx_template_t, crypto_req_handle_t);
+-
+-static crypto_mac_ops_t sha1_mac_ops = {
+-	.mac_init = sha1_mac_init,
+-	.mac = NULL,
+-	.mac_update = sha1_mac_update,
+-	.mac_final = sha1_mac_final,
+-	.mac_atomic = sha1_mac_atomic,
+-	.mac_verify_atomic = sha1_mac_verify_atomic
+-};
+-
+-static int sha1_create_ctx_template(crypto_provider_handle_t,
+-    crypto_mechanism_t *, crypto_key_t *, crypto_spi_ctx_template_t *,
+-    size_t *, crypto_req_handle_t);
+-static int sha1_free_context(crypto_ctx_t *);
+-
+-static crypto_ctx_ops_t sha1_ctx_ops = {
+-	.create_ctx_template = sha1_create_ctx_template,
+-	.free_context = sha1_free_context
+-};
+-
+-static crypto_ops_t sha1_crypto_ops = {{{{{
+-	&sha1_control_ops,
+-	&sha1_digest_ops,
+-	NULL,
+-	&sha1_mac_ops,
+-	NULL,
+-	NULL,
+-	NULL,
+-	NULL,
+-	NULL,
+-	NULL,
+-	NULL,
+-	NULL,
+-	NULL,
+-	&sha1_ctx_ops,
+-}}}}};
+-
+-static crypto_provider_info_t sha1_prov_info = {{{{
+-	CRYPTO_SPI_VERSION_1,
+-	"SHA1 Software Provider",
+-	CRYPTO_SW_PROVIDER,
+-	NULL,
+-	&sha1_crypto_ops,
+-	sizeof (sha1_mech_info_tab)/sizeof (crypto_mech_info_t),
+-	sha1_mech_info_tab
+-}}}};
+-
+-static crypto_kcf_provider_handle_t sha1_prov_handle = 0;
+-
+-int
+-sha1_mod_init(void)
+-{
+-	int ret;
+-
+-	if ((ret = mod_install(&modlinkage)) != 0)
+-		return (ret);
+-
+-	/*
+-	 * Register with KCF. If the registration fails, log an
+-	 * error but do not uninstall the module, since the functionality
+-	 * provided by misc/sha1 should still be available.
+-	 */
+-	if ((ret = crypto_register_provider(&sha1_prov_info,
+-	    &sha1_prov_handle)) != CRYPTO_SUCCESS)
+-		cmn_err(CE_WARN, "sha1 _init: "
+-		    "crypto_register_provider() failed (0x%x)", ret);
+-
+-	return (0);
+-}
+-
+-int
+-sha1_mod_fini(void)
+-{
+-	int ret;
+-
+-	if (sha1_prov_handle != 0) {
+-		if ((ret = crypto_unregister_provider(sha1_prov_handle)) !=
+-		    CRYPTO_SUCCESS) {
+-			cmn_err(CE_WARN,
+-			    "sha1 _fini: crypto_unregister_provider() "
+-			    "failed (0x%x)", ret);
+-			return (EBUSY);
+-		}
+-		sha1_prov_handle = 0;
+-	}
+-
+-	return (mod_remove(&modlinkage));
+-}
+-
+-/*
+- * KCF software provider control entry points.
+- */
+-/* ARGSUSED */
+-static void
+-sha1_provider_status(crypto_provider_handle_t provider, uint_t *status)
+-{
+-	*status = CRYPTO_PROVIDER_READY;
+-}
+-
+-/*
+- * KCF software provider digest entry points.
+- */
+-
+-static int
+-sha1_digest_init(crypto_ctx_t *ctx, crypto_mechanism_t *mechanism,
+-    crypto_req_handle_t req)
+-{
+-	if (mechanism->cm_type != SHA1_MECH_INFO_TYPE)
+-		return (CRYPTO_MECHANISM_INVALID);
+-
+-	/*
+-	 * Allocate and initialize SHA1 context.
+-	 */
+-	ctx->cc_provider_private = kmem_alloc(sizeof (sha1_ctx_t),
+-	    crypto_kmflag(req));
+-	if (ctx->cc_provider_private == NULL)
+-		return (CRYPTO_HOST_MEMORY);
+-
+-	PROV_SHA1_CTX(ctx)->sc_mech_type = SHA1_MECH_INFO_TYPE;
+-	SHA1Init(&PROV_SHA1_CTX(ctx)->sc_sha1_ctx);
+-
+-	return (CRYPTO_SUCCESS);
+-}
+-
+-/*
+- * Helper SHA1 digest update function for uio data.
+- */
+-static int
+-sha1_digest_update_uio(SHA1_CTX *sha1_ctx, crypto_data_t *data)
+-{
+-	off_t offset = data->cd_offset;
+-	size_t length = data->cd_length;
+-	uint_t vec_idx = 0;
+-	size_t cur_len;
+-
+-	/* we support only kernel buffer */
+-	if (zfs_uio_segflg(data->cd_uio) != UIO_SYSSPACE)
+-		return (CRYPTO_ARGUMENTS_BAD);
+-
+-	/*
+-	 * Jump to the first iovec containing data to be
+-	 * digested.
+-	 */
+-	offset = zfs_uio_index_at_offset(data->cd_uio, offset, &vec_idx);
+-	if (vec_idx == zfs_uio_iovcnt(data->cd_uio)) {
+-		/*
+-		 * The caller specified an offset that is larger than the
+-		 * total size of the buffers it provided.
+-		 */
+-		return (CRYPTO_DATA_LEN_RANGE);
+-	}
+-
+-	/*
+-	 * Now do the digesting on the iovecs.
+-	 */
+-	while (vec_idx < zfs_uio_iovcnt(data->cd_uio) && length > 0) {
+-		cur_len = MIN(zfs_uio_iovlen(data->cd_uio, vec_idx) -
+-		    offset, length);
+-
+-		SHA1Update(sha1_ctx,
+-		    (uint8_t *)zfs_uio_iovbase(data->cd_uio, vec_idx) + offset,
+-		    cur_len);
+-
+-		length -= cur_len;
+-		vec_idx++;
+-		offset = 0;
+-	}
+-
+-	if (vec_idx == zfs_uio_iovcnt(data->cd_uio) && length > 0) {
+-		/*
+-		 * The end of the specified iovec's was reached but
+-		 * the length requested could not be processed, i.e.
+-		 * The caller requested to digest more data than it provided.
+-		 */
+-		return (CRYPTO_DATA_LEN_RANGE);
+-	}
+-
+-	return (CRYPTO_SUCCESS);
+-}
+-
+-/*
+- * Helper SHA1 digest final function for uio data.
+- * digest_len is the length of the desired digest. If digest_len
+- * is smaller than the default SHA1 digest length, the caller
+- * must pass a scratch buffer, digest_scratch, which must
+- * be at least SHA1_DIGEST_LENGTH bytes.
+- */
+-static int
+-sha1_digest_final_uio(SHA1_CTX *sha1_ctx, crypto_data_t *digest,
+-    ulong_t digest_len, uchar_t *digest_scratch)
+-{
+-	off_t offset = digest->cd_offset;
+-	uint_t vec_idx = 0;
+-
+-	/* we support only kernel buffer */
+-	if (zfs_uio_segflg(digest->cd_uio) != UIO_SYSSPACE)
+-		return (CRYPTO_ARGUMENTS_BAD);
+-
+-	/*
+-	 * Jump to the first iovec containing ptr to the digest to
+-	 * be returned.
+-	 */
+-	offset = zfs_uio_index_at_offset(digest->cd_uio, offset, &vec_idx);
+-	if (vec_idx == zfs_uio_iovcnt(digest->cd_uio)) {
+-		/*
+-		 * The caller specified an offset that is
+-		 * larger than the total size of the buffers
+-		 * it provided.
+-		 */
+-		return (CRYPTO_DATA_LEN_RANGE);
+-	}
+-
+-	if (offset + digest_len <=
+-	    zfs_uio_iovlen(digest->cd_uio, vec_idx)) {
+-		/*
+-		 * The computed SHA1 digest will fit in the current
+-		 * iovec.
+-		 */
+-		if (digest_len != SHA1_DIGEST_LENGTH) {
+-			/*
+-			 * The caller requested a short digest. Digest
+-			 * into a scratch buffer and return to
+-			 * the user only what was requested.
+-			 */
+-			SHA1Final(digest_scratch, sha1_ctx);
+-			bcopy(digest_scratch, (uchar_t *)
+-			    zfs_uio_iovbase(digest->cd_uio, vec_idx) + offset,
+-			    digest_len);
+-		} else {
+-			SHA1Final((uchar_t *)zfs_uio_iovbase(digest->
+-			    cd_uio, vec_idx) + offset,
+-			    sha1_ctx);
+-		}
+-	} else {
+-		/*
+-		 * The computed digest will be crossing one or more iovec's.
+-		 * This is bad performance-wise but we need to support it.
+-		 * Allocate a small scratch buffer on the stack and
+-		 * copy it piece meal to the specified digest iovec's.
+-		 */
+-		uchar_t digest_tmp[SHA1_DIGEST_LENGTH];
+-		off_t scratch_offset = 0;
+-		size_t length = digest_len;
+-		size_t cur_len;
+-
+-		SHA1Final(digest_tmp, sha1_ctx);
+-
+-		while (vec_idx < zfs_uio_iovcnt(digest->cd_uio) && length > 0) {
+-			cur_len = MIN(zfs_uio_iovlen(digest->cd_uio, vec_idx) -
+-			    offset, length);
+-			bcopy(digest_tmp + scratch_offset,
+-			    zfs_uio_iovbase(digest->cd_uio, vec_idx) + offset,
+-			    cur_len);
+-
+-			length -= cur_len;
+-			vec_idx++;
+-			scratch_offset += cur_len;
+-			offset = 0;
+-		}
+-
+-		if (vec_idx == zfs_uio_iovcnt(digest->cd_uio) && length > 0) {
+-			/*
+-			 * The end of the specified iovec's was reached but
+-			 * the length requested could not be processed, i.e.
+-			 * The caller requested to digest more data than it
+-			 * provided.
+-			 */
+-			return (CRYPTO_DATA_LEN_RANGE);
+-		}
+-	}
+-
+-	return (CRYPTO_SUCCESS);
+-}
+-
+-/* ARGSUSED */
+-static int
+-sha1_digest(crypto_ctx_t *ctx, crypto_data_t *data, crypto_data_t *digest,
+-    crypto_req_handle_t req)
+-{
+-	int ret = CRYPTO_SUCCESS;
+-
+-	ASSERT(ctx->cc_provider_private != NULL);
+-
+-	/*
+-	 * We need to just return the length needed to store the output.
+-	 * We should not destroy the context for the following cases.
+-	 */
+-	if ((digest->cd_length == 0) ||
+-	    (digest->cd_length < SHA1_DIGEST_LENGTH)) {
+-		digest->cd_length = SHA1_DIGEST_LENGTH;
+-		return (CRYPTO_BUFFER_TOO_SMALL);
+-	}
+-
+-	/*
+-	 * Do the SHA1 update on the specified input data.
+-	 */
+-	switch (data->cd_format) {
+-	case CRYPTO_DATA_RAW:
+-		SHA1Update(&PROV_SHA1_CTX(ctx)->sc_sha1_ctx,
+-		    (uint8_t *)data->cd_raw.iov_base + data->cd_offset,
+-		    data->cd_length);
+-		break;
+-	case CRYPTO_DATA_UIO:
+-		ret = sha1_digest_update_uio(&PROV_SHA1_CTX(ctx)->sc_sha1_ctx,
+-		    data);
+-		break;
+-	default:
+-		ret = CRYPTO_ARGUMENTS_BAD;
+-	}
+-
+-	if (ret != CRYPTO_SUCCESS) {
+-		/* the update failed, free context and bail */
+-		kmem_free(ctx->cc_provider_private, sizeof (sha1_ctx_t));
+-		ctx->cc_provider_private = NULL;
+-		digest->cd_length = 0;
+-		return (ret);
+-	}
+-
+-	/*
+-	 * Do a SHA1 final, must be done separately since the digest
+-	 * type can be different than the input data type.
+-	 */
+-	switch (digest->cd_format) {
+-	case CRYPTO_DATA_RAW:
+-		SHA1Final((unsigned char *)digest->cd_raw.iov_base +
+-		    digest->cd_offset, &PROV_SHA1_CTX(ctx)->sc_sha1_ctx);
+-		break;
+-	case CRYPTO_DATA_UIO:
+-		ret = sha1_digest_final_uio(&PROV_SHA1_CTX(ctx)->sc_sha1_ctx,
+-		    digest, SHA1_DIGEST_LENGTH, NULL);
+-		break;
+-	default:
+-		ret = CRYPTO_ARGUMENTS_BAD;
+-	}
+-
+-	/* all done, free context and return */
+-
+-	if (ret == CRYPTO_SUCCESS) {
+-		digest->cd_length = SHA1_DIGEST_LENGTH;
+-	} else {
+-		digest->cd_length = 0;
+-	}
+-
+-	kmem_free(ctx->cc_provider_private, sizeof (sha1_ctx_t));
+-	ctx->cc_provider_private = NULL;
+-	return (ret);
+-}
+-
+-/* ARGSUSED */
+-static int
+-sha1_digest_update(crypto_ctx_t *ctx, crypto_data_t *data,
+-    crypto_req_handle_t req)
+-{
+-	int ret = CRYPTO_SUCCESS;
+-
+-	ASSERT(ctx->cc_provider_private != NULL);
+-
+-	/*
+-	 * Do the SHA1 update on the specified input data.
+-	 */
+-	switch (data->cd_format) {
+-	case CRYPTO_DATA_RAW:
+-		SHA1Update(&PROV_SHA1_CTX(ctx)->sc_sha1_ctx,
+-		    (uint8_t *)data->cd_raw.iov_base + data->cd_offset,
+-		    data->cd_length);
+-		break;
+-	case CRYPTO_DATA_UIO:
+-		ret = sha1_digest_update_uio(&PROV_SHA1_CTX(ctx)->sc_sha1_ctx,
+-		    data);
+-		break;
+-	default:
+-		ret = CRYPTO_ARGUMENTS_BAD;
+-	}
+-
+-	return (ret);
+-}
+-
+-/* ARGSUSED */
+-static int
+-sha1_digest_final(crypto_ctx_t *ctx, crypto_data_t *digest,
+-    crypto_req_handle_t req)
+-{
+-	int ret = CRYPTO_SUCCESS;
+-
+-	ASSERT(ctx->cc_provider_private != NULL);
+-
+-	/*
+-	 * We need to just return the length needed to store the output.
+-	 * We should not destroy the context for the following cases.
+-	 */
+-	if ((digest->cd_length == 0) ||
+-	    (digest->cd_length < SHA1_DIGEST_LENGTH)) {
+-		digest->cd_length = SHA1_DIGEST_LENGTH;
+-		return (CRYPTO_BUFFER_TOO_SMALL);
+-	}
+-
+-	/*
+-	 * Do a SHA1 final.
+-	 */
+-	switch (digest->cd_format) {
+-	case CRYPTO_DATA_RAW:
+-		SHA1Final((unsigned char *)digest->cd_raw.iov_base +
+-		    digest->cd_offset, &PROV_SHA1_CTX(ctx)->sc_sha1_ctx);
+-		break;
+-	case CRYPTO_DATA_UIO:
+-		ret = sha1_digest_final_uio(&PROV_SHA1_CTX(ctx)->sc_sha1_ctx,
+-		    digest, SHA1_DIGEST_LENGTH, NULL);
+-		break;
+-	default:
+-		ret = CRYPTO_ARGUMENTS_BAD;
+-	}
+-
+-	/* all done, free context and return */
+-
+-	if (ret == CRYPTO_SUCCESS) {
+-		digest->cd_length = SHA1_DIGEST_LENGTH;
+-	} else {
+-		digest->cd_length = 0;
+-	}
+-
+-	kmem_free(ctx->cc_provider_private, sizeof (sha1_ctx_t));
+-	ctx->cc_provider_private = NULL;
+-
+-	return (ret);
+-}
+-
+-/* ARGSUSED */
+-static int
+-sha1_digest_atomic(crypto_provider_handle_t provider,
+-    crypto_session_id_t session_id, crypto_mechanism_t *mechanism,
+-    crypto_data_t *data, crypto_data_t *digest,
+-    crypto_req_handle_t req)
+-{
+-	int ret = CRYPTO_SUCCESS;
+-	SHA1_CTX sha1_ctx;
+-
+-	if (mechanism->cm_type != SHA1_MECH_INFO_TYPE)
+-		return (CRYPTO_MECHANISM_INVALID);
+-
+-	/*
+-	 * Do the SHA1 init.
+-	 */
+-	SHA1Init(&sha1_ctx);
+-
+-	/*
+-	 * Do the SHA1 update on the specified input data.
+-	 */
+-	switch (data->cd_format) {
+-	case CRYPTO_DATA_RAW:
+-		SHA1Update(&sha1_ctx,
+-		    (uint8_t *)data->cd_raw.iov_base + data->cd_offset,
+-		    data->cd_length);
+-		break;
+-	case CRYPTO_DATA_UIO:
+-		ret = sha1_digest_update_uio(&sha1_ctx, data);
+-		break;
+-	default:
+-		ret = CRYPTO_ARGUMENTS_BAD;
+-	}
+-
+-	if (ret != CRYPTO_SUCCESS) {
+-		/* the update failed, bail */
+-		digest->cd_length = 0;
+-		return (ret);
+-	}
+-
+-	/*
+-	 * Do a SHA1 final, must be done separately since the digest
+-	 * type can be different than the input data type.
+-	 */
+-	switch (digest->cd_format) {
+-	case CRYPTO_DATA_RAW:
+-		SHA1Final((unsigned char *)digest->cd_raw.iov_base +
+-		    digest->cd_offset, &sha1_ctx);
+-		break;
+-	case CRYPTO_DATA_UIO:
+-		ret = sha1_digest_final_uio(&sha1_ctx, digest,
+-		    SHA1_DIGEST_LENGTH, NULL);
+-		break;
+-	default:
+-		ret = CRYPTO_ARGUMENTS_BAD;
+-	}
+-
+-	if (ret == CRYPTO_SUCCESS) {
+-		digest->cd_length = SHA1_DIGEST_LENGTH;
+-	} else {
+-		digest->cd_length = 0;
+-	}
+-
+-	return (ret);
+-}
+-
+-/*
+- * KCF software provider mac entry points.
+- *
+- * SHA1 HMAC is: SHA1(key XOR opad, SHA1(key XOR ipad, text))
+- *
+- * Init:
+- * The initialization routine initializes what we denote
+- * as the inner and outer contexts by doing
+- * - for inner context: SHA1(key XOR ipad)
+- * - for outer context: SHA1(key XOR opad)
+- *
+- * Update:
+- * Each subsequent SHA1 HMAC update will result in an
+- * update of the inner context with the specified data.
+- *
+- * Final:
+- * The SHA1 HMAC final will do a SHA1 final operation on the
+- * inner context, and the resulting digest will be used
+- * as the data for an update on the outer context. Last
+- * but not least, a SHA1 final on the outer context will
+- * be performed to obtain the SHA1 HMAC digest to return
+- * to the user.
+- */
+-
+-/*
+- * Initialize a SHA1-HMAC context.
+- */
+-static void
+-sha1_mac_init_ctx(sha1_hmac_ctx_t *ctx, void *keyval, uint_t length_in_bytes)
+-{
+-	uint32_t ipad[SHA1_HMAC_INTS_PER_BLOCK];
+-	uint32_t opad[SHA1_HMAC_INTS_PER_BLOCK];
+-	uint_t i;
+-
+-	bzero(ipad, SHA1_HMAC_BLOCK_SIZE);
+-	bzero(opad, SHA1_HMAC_BLOCK_SIZE);
+-
+-	bcopy(keyval, ipad, length_in_bytes);
+-	bcopy(keyval, opad, length_in_bytes);
+-
+-	/* XOR key with ipad (0x36) and opad (0x5c) */
+-	for (i = 0; i < SHA1_HMAC_INTS_PER_BLOCK; i++) {
+-		ipad[i] ^= 0x36363636;
+-		opad[i] ^= 0x5c5c5c5c;
+-	}
+-
+-	/* perform SHA1 on ipad */
+-	SHA1Init(&ctx->hc_icontext);
+-	SHA1Update(&ctx->hc_icontext, (uint8_t *)ipad, SHA1_HMAC_BLOCK_SIZE);
+-
+-	/* perform SHA1 on opad */
+-	SHA1Init(&ctx->hc_ocontext);
+-	SHA1Update(&ctx->hc_ocontext, (uint8_t *)opad, SHA1_HMAC_BLOCK_SIZE);
+-}
+-
+-/*
+- */
+-static int
+-sha1_mac_init(crypto_ctx_t *ctx, crypto_mechanism_t *mechanism,
+-    crypto_key_t *key, crypto_spi_ctx_template_t ctx_template,
+-    crypto_req_handle_t req)
+-{
+-	int ret = CRYPTO_SUCCESS;
+-	uint_t keylen_in_bytes = CRYPTO_BITS2BYTES(key->ck_length);
+-
+-	if (mechanism->cm_type != SHA1_HMAC_MECH_INFO_TYPE &&
+-	    mechanism->cm_type != SHA1_HMAC_GEN_MECH_INFO_TYPE)
+-		return (CRYPTO_MECHANISM_INVALID);
+-
+-	/* Add support for key by attributes (RFE 4706552) */
+-	if (key->ck_format != CRYPTO_KEY_RAW)
+-		return (CRYPTO_ARGUMENTS_BAD);
+-
+-	ctx->cc_provider_private = kmem_alloc(sizeof (sha1_hmac_ctx_t),
+-	    crypto_kmflag(req));
+-	if (ctx->cc_provider_private == NULL)
+-		return (CRYPTO_HOST_MEMORY);
+-
+-	if (ctx_template != NULL) {
+-		/* reuse context template */
+-		bcopy(ctx_template, PROV_SHA1_HMAC_CTX(ctx),
+-		    sizeof (sha1_hmac_ctx_t));
+-	} else {
+-		/* no context template, compute context */
+-		if (keylen_in_bytes > SHA1_HMAC_BLOCK_SIZE) {
+-			uchar_t digested_key[SHA1_DIGEST_LENGTH];
+-			sha1_hmac_ctx_t *hmac_ctx = ctx->cc_provider_private;
+-
+-			/*
+-			 * Hash the passed-in key to get a smaller key.
+-			 * The inner context is used since it hasn't been
+-			 * initialized yet.
+-			 */
+-			PROV_SHA1_DIGEST_KEY(&hmac_ctx->hc_icontext,
+-			    key->ck_data, keylen_in_bytes, digested_key);
+-			sha1_mac_init_ctx(PROV_SHA1_HMAC_CTX(ctx),
+-			    digested_key, SHA1_DIGEST_LENGTH);
+-		} else {
+-			sha1_mac_init_ctx(PROV_SHA1_HMAC_CTX(ctx),
+-			    key->ck_data, keylen_in_bytes);
+-		}
+-	}
+-
+-	/*
+-	 * Get the mechanism parameters, if applicable.
+-	 */
+-	PROV_SHA1_HMAC_CTX(ctx)->hc_mech_type = mechanism->cm_type;
+-	if (mechanism->cm_type == SHA1_HMAC_GEN_MECH_INFO_TYPE) {
+-		if (mechanism->cm_param == NULL ||
+-		    mechanism->cm_param_len != sizeof (ulong_t))
+-			ret = CRYPTO_MECHANISM_PARAM_INVALID;
+-		PROV_SHA1_GET_DIGEST_LEN(mechanism,
+-		    PROV_SHA1_HMAC_CTX(ctx)->hc_digest_len);
+-		if (PROV_SHA1_HMAC_CTX(ctx)->hc_digest_len >
+-		    SHA1_DIGEST_LENGTH)
+-			ret = CRYPTO_MECHANISM_PARAM_INVALID;
+-	}
+-
+-	if (ret != CRYPTO_SUCCESS) {
+-		bzero(ctx->cc_provider_private, sizeof (sha1_hmac_ctx_t));
+-		kmem_free(ctx->cc_provider_private, sizeof (sha1_hmac_ctx_t));
+-		ctx->cc_provider_private = NULL;
+-	}
+-
+-	return (ret);
+-}
+-
+-/* ARGSUSED */
+-static int
+-sha1_mac_update(crypto_ctx_t *ctx, crypto_data_t *data, crypto_req_handle_t req)
+-{
+-	int ret = CRYPTO_SUCCESS;
+-
+-	ASSERT(ctx->cc_provider_private != NULL);
+-
+-	/*
+-	 * Do a SHA1 update of the inner context using the specified
+-	 * data.
+-	 */
+-	switch (data->cd_format) {
+-	case CRYPTO_DATA_RAW:
+-		SHA1Update(&PROV_SHA1_HMAC_CTX(ctx)->hc_icontext,
+-		    (uint8_t *)data->cd_raw.iov_base + data->cd_offset,
+-		    data->cd_length);
+-		break;
+-	case CRYPTO_DATA_UIO:
+-		ret = sha1_digest_update_uio(
+-		    &PROV_SHA1_HMAC_CTX(ctx)->hc_icontext, data);
+-		break;
+-	default:
+-		ret = CRYPTO_ARGUMENTS_BAD;
+-	}
+-
+-	return (ret);
+-}
+-
+-/* ARGSUSED */
+-static int
+-sha1_mac_final(crypto_ctx_t *ctx, crypto_data_t *mac, crypto_req_handle_t req)
+-{
+-	int ret = CRYPTO_SUCCESS;
+-	uchar_t digest[SHA1_DIGEST_LENGTH];
+-	uint32_t digest_len = SHA1_DIGEST_LENGTH;
+-
+-	ASSERT(ctx->cc_provider_private != NULL);
+-
+-	if (PROV_SHA1_HMAC_CTX(ctx)->hc_mech_type ==
+-	    SHA1_HMAC_GEN_MECH_INFO_TYPE)
+-		digest_len = PROV_SHA1_HMAC_CTX(ctx)->hc_digest_len;
+-
+-	/*
+-	 * We need to just return the length needed to store the output.
+-	 * We should not destroy the context for the following cases.
+-	 */
+-	if ((mac->cd_length == 0) || (mac->cd_length < digest_len)) {
+-		mac->cd_length = digest_len;
+-		return (CRYPTO_BUFFER_TOO_SMALL);
+-	}
+-
+-	/*
+-	 * Do a SHA1 final on the inner context.
+-	 */
+-	SHA1Final(digest, &PROV_SHA1_HMAC_CTX(ctx)->hc_icontext);
+-
+-	/*
+-	 * Do a SHA1 update on the outer context, feeding the inner
+-	 * digest as data.
+-	 */
+-	SHA1Update(&PROV_SHA1_HMAC_CTX(ctx)->hc_ocontext, digest,
+-	    SHA1_DIGEST_LENGTH);
+-
+-	/*
+-	 * Do a SHA1 final on the outer context, storing the computing
+-	 * digest in the users buffer.
+-	 */
+-	switch (mac->cd_format) {
+-	case CRYPTO_DATA_RAW:
+-		if (digest_len != SHA1_DIGEST_LENGTH) {
+-			/*
+-			 * The caller requested a short digest. Digest
+-			 * into a scratch buffer and return to
+-			 * the user only what was requested.
+-			 */
+-			SHA1Final(digest,
+-			    &PROV_SHA1_HMAC_CTX(ctx)->hc_ocontext);
+-			bcopy(digest, (unsigned char *)mac->cd_raw.iov_base +
+-			    mac->cd_offset, digest_len);
+-		} else {
+-			SHA1Final((unsigned char *)mac->cd_raw.iov_base +
+-			    mac->cd_offset,
+-			    &PROV_SHA1_HMAC_CTX(ctx)->hc_ocontext);
+-		}
+-		break;
+-	case CRYPTO_DATA_UIO:
+-		ret = sha1_digest_final_uio(
+-		    &PROV_SHA1_HMAC_CTX(ctx)->hc_ocontext, mac,
+-		    digest_len, digest);
+-		break;
+-	default:
+-		ret = CRYPTO_ARGUMENTS_BAD;
+-	}
+-
+-	if (ret == CRYPTO_SUCCESS) {
+-		mac->cd_length = digest_len;
+-	} else {
+-		mac->cd_length = 0;
+-	}
+-
+-	bzero(ctx->cc_provider_private, sizeof (sha1_hmac_ctx_t));
+-	kmem_free(ctx->cc_provider_private, sizeof (sha1_hmac_ctx_t));
+-	ctx->cc_provider_private = NULL;
+-
+-	return (ret);
+-}
+-
+-#define	SHA1_MAC_UPDATE(data, ctx, ret) {				\
+-	switch (data->cd_format) {					\
+-	case CRYPTO_DATA_RAW:						\
+-		SHA1Update(&(ctx).hc_icontext,				\
+-		    (uint8_t *)data->cd_raw.iov_base +			\
+-		    data->cd_offset, data->cd_length);			\
+-		break;							\
+-	case CRYPTO_DATA_UIO:						\
+-		ret = sha1_digest_update_uio(&(ctx).hc_icontext, data); \
+-		break;							\
+-	default:							\
+-		ret = CRYPTO_ARGUMENTS_BAD;				\
+-	}								\
+-}
+-
+-/* ARGSUSED */
+-static int
+-sha1_mac_atomic(crypto_provider_handle_t provider,
+-    crypto_session_id_t session_id, crypto_mechanism_t *mechanism,
+-    crypto_key_t *key, crypto_data_t *data, crypto_data_t *mac,
+-    crypto_spi_ctx_template_t ctx_template, crypto_req_handle_t req)
+-{
+-	int ret = CRYPTO_SUCCESS;
+-	uchar_t digest[SHA1_DIGEST_LENGTH];
+-	sha1_hmac_ctx_t sha1_hmac_ctx;
+-	uint32_t digest_len = SHA1_DIGEST_LENGTH;
+-	uint_t keylen_in_bytes = CRYPTO_BITS2BYTES(key->ck_length);
+-
+-	if (mechanism->cm_type != SHA1_HMAC_MECH_INFO_TYPE &&
+-	    mechanism->cm_type != SHA1_HMAC_GEN_MECH_INFO_TYPE)
+-		return (CRYPTO_MECHANISM_INVALID);
+-
+-	/* Add support for key by attributes (RFE 4706552) */
+-	if (key->ck_format != CRYPTO_KEY_RAW)
+-		return (CRYPTO_ARGUMENTS_BAD);
+-
+-	if (ctx_template != NULL) {
+-		/* reuse context template */
+-		bcopy(ctx_template, &sha1_hmac_ctx, sizeof (sha1_hmac_ctx_t));
+-	} else {
+-		/* no context template, initialize context */
+-		if (keylen_in_bytes > SHA1_HMAC_BLOCK_SIZE) {
+-			/*
+-			 * Hash the passed-in key to get a smaller key.
+-			 * The inner context is used since it hasn't been
+-			 * initialized yet.
+-			 */
+-			PROV_SHA1_DIGEST_KEY(&sha1_hmac_ctx.hc_icontext,
+-			    key->ck_data, keylen_in_bytes, digest);
+-			sha1_mac_init_ctx(&sha1_hmac_ctx, digest,
+-			    SHA1_DIGEST_LENGTH);
+-		} else {
+-			sha1_mac_init_ctx(&sha1_hmac_ctx, key->ck_data,
+-			    keylen_in_bytes);
+-		}
+-	}
+-
+-	/* get the mechanism parameters, if applicable */
+-	if (mechanism->cm_type == SHA1_HMAC_GEN_MECH_INFO_TYPE) {
+-		if (mechanism->cm_param == NULL ||
+-		    mechanism->cm_param_len != sizeof (ulong_t)) {
+-			ret = CRYPTO_MECHANISM_PARAM_INVALID;
+-			goto bail;
+-		}
+-		PROV_SHA1_GET_DIGEST_LEN(mechanism, digest_len);
+-		if (digest_len > SHA1_DIGEST_LENGTH) {
+-			ret = CRYPTO_MECHANISM_PARAM_INVALID;
+-			goto bail;
+-		}
+-	}
+-
+-	/* do a SHA1 update of the inner context using the specified data */
+-	SHA1_MAC_UPDATE(data, sha1_hmac_ctx, ret);
+-	if (ret != CRYPTO_SUCCESS)
+-		/* the update failed, free context and bail */
+-		goto bail;
+-
+-	/*
+-	 * Do a SHA1 final on the inner context.
+-	 */
+-	SHA1Final(digest, &sha1_hmac_ctx.hc_icontext);
+-
+-	/*
+-	 * Do an SHA1 update on the outer context, feeding the inner
+-	 * digest as data.
+-	 */
+-	SHA1Update(&sha1_hmac_ctx.hc_ocontext, digest, SHA1_DIGEST_LENGTH);
+-
+-	/*
+-	 * Do a SHA1 final on the outer context, storing the computed
+-	 * digest in the users buffer.
+-	 */
+-	switch (mac->cd_format) {
+-	case CRYPTO_DATA_RAW:
+-		if (digest_len != SHA1_DIGEST_LENGTH) {
+-			/*
+-			 * The caller requested a short digest. Digest
+-			 * into a scratch buffer and return to
+-			 * the user only what was requested.
+-			 */
+-			SHA1Final(digest, &sha1_hmac_ctx.hc_ocontext);
+-			bcopy(digest, (unsigned char *)mac->cd_raw.iov_base +
+-			    mac->cd_offset, digest_len);
+-		} else {
+-			SHA1Final((unsigned char *)mac->cd_raw.iov_base +
+-			    mac->cd_offset, &sha1_hmac_ctx.hc_ocontext);
+-		}
+-		break;
+-	case CRYPTO_DATA_UIO:
+-		ret = sha1_digest_final_uio(&sha1_hmac_ctx.hc_ocontext, mac,
+-		    digest_len, digest);
+-		break;
+-	default:
+-		ret = CRYPTO_ARGUMENTS_BAD;
+-	}
+-
+-	if (ret == CRYPTO_SUCCESS) {
+-		mac->cd_length = digest_len;
+-	} else {
+-		mac->cd_length = 0;
+-	}
+-	/* Extra paranoia: zeroize the context on the stack */
+-	bzero(&sha1_hmac_ctx, sizeof (sha1_hmac_ctx_t));
+-
+-	return (ret);
+-bail:
+-	bzero(&sha1_hmac_ctx, sizeof (sha1_hmac_ctx_t));
+-	mac->cd_length = 0;
+-	return (ret);
+-}
+-
+-/* ARGSUSED */
+-static int
+-sha1_mac_verify_atomic(crypto_provider_handle_t provider,
+-    crypto_session_id_t session_id, crypto_mechanism_t *mechanism,
+-    crypto_key_t *key, crypto_data_t *data, crypto_data_t *mac,
+-    crypto_spi_ctx_template_t ctx_template, crypto_req_handle_t req)
+-{
+-	int ret = CRYPTO_SUCCESS;
+-	uchar_t digest[SHA1_DIGEST_LENGTH];
+-	sha1_hmac_ctx_t sha1_hmac_ctx;
+-	uint32_t digest_len = SHA1_DIGEST_LENGTH;
+-	uint_t keylen_in_bytes = CRYPTO_BITS2BYTES(key->ck_length);
+-
+-	if (mechanism->cm_type != SHA1_HMAC_MECH_INFO_TYPE &&
+-	    mechanism->cm_type != SHA1_HMAC_GEN_MECH_INFO_TYPE)
+-		return (CRYPTO_MECHANISM_INVALID);
+-
+-	/* Add support for key by attributes (RFE 4706552) */
+-	if (key->ck_format != CRYPTO_KEY_RAW)
+-		return (CRYPTO_ARGUMENTS_BAD);
+-
+-	if (ctx_template != NULL) {
+-		/* reuse context template */
+-		bcopy(ctx_template, &sha1_hmac_ctx, sizeof (sha1_hmac_ctx_t));
+-	} else {
+-		/* no context template, initialize context */
+-		if (keylen_in_bytes > SHA1_HMAC_BLOCK_SIZE) {
+-			/*
+-			 * Hash the passed-in key to get a smaller key.
+-			 * The inner context is used since it hasn't been
+-			 * initialized yet.
+-			 */
+-			PROV_SHA1_DIGEST_KEY(&sha1_hmac_ctx.hc_icontext,
+-			    key->ck_data, keylen_in_bytes, digest);
+-			sha1_mac_init_ctx(&sha1_hmac_ctx, digest,
+-			    SHA1_DIGEST_LENGTH);
+-		} else {
+-			sha1_mac_init_ctx(&sha1_hmac_ctx, key->ck_data,
+-			    keylen_in_bytes);
+-		}
+-	}
+-
+-	/* get the mechanism parameters, if applicable */
+-	if (mechanism->cm_type == SHA1_HMAC_GEN_MECH_INFO_TYPE) {
+-		if (mechanism->cm_param == NULL ||
+-		    mechanism->cm_param_len != sizeof (ulong_t)) {
+-			ret = CRYPTO_MECHANISM_PARAM_INVALID;
+-			goto bail;
+-		}
+-		PROV_SHA1_GET_DIGEST_LEN(mechanism, digest_len);
+-		if (digest_len > SHA1_DIGEST_LENGTH) {
+-			ret = CRYPTO_MECHANISM_PARAM_INVALID;
+-			goto bail;
+-		}
+-	}
+-
+-	if (mac->cd_length != digest_len) {
+-		ret = CRYPTO_INVALID_MAC;
+-		goto bail;
+-	}
+-
+-	/* do a SHA1 update of the inner context using the specified data */
+-	SHA1_MAC_UPDATE(data, sha1_hmac_ctx, ret);
+-	if (ret != CRYPTO_SUCCESS)
+-		/* the update failed, free context and bail */
+-		goto bail;
+-
+-	/* do a SHA1 final on the inner context */
+-	SHA1Final(digest, &sha1_hmac_ctx.hc_icontext);
+-
+-	/*
+-	 * Do an SHA1 update on the outer context, feeding the inner
+-	 * digest as data.
+-	 */
+-	SHA1Update(&sha1_hmac_ctx.hc_ocontext, digest, SHA1_DIGEST_LENGTH);
+-
+-	/*
+-	 * Do a SHA1 final on the outer context, storing the computed
+-	 * digest in the users buffer.
+-	 */
+-	SHA1Final(digest, &sha1_hmac_ctx.hc_ocontext);
+-
+-	/*
+-	 * Compare the computed digest against the expected digest passed
+-	 * as argument.
+-	 */
+-
+-	switch (mac->cd_format) {
+-
+-	case CRYPTO_DATA_RAW:
+-		if (bcmp(digest, (unsigned char *)mac->cd_raw.iov_base +
+-		    mac->cd_offset, digest_len) != 0)
+-			ret = CRYPTO_INVALID_MAC;
+-		break;
+-
+-	case CRYPTO_DATA_UIO: {
+-		off_t offset = mac->cd_offset;
+-		uint_t vec_idx = 0;
+-		off_t scratch_offset = 0;
+-		size_t length = digest_len;
+-		size_t cur_len;
+-
+-		/* we support only kernel buffer */
+-		if (zfs_uio_segflg(mac->cd_uio) != UIO_SYSSPACE)
+-			return (CRYPTO_ARGUMENTS_BAD);
+-
+-		/* jump to the first iovec containing the expected digest */
+-		offset = zfs_uio_index_at_offset(mac->cd_uio, offset, &vec_idx);
+-		if (vec_idx == zfs_uio_iovcnt(mac->cd_uio)) {
+-			/*
+-			 * The caller specified an offset that is
+-			 * larger than the total size of the buffers
+-			 * it provided.
+-			 */
+-			ret = CRYPTO_DATA_LEN_RANGE;
+-			break;
+-		}
+-
+-		/* do the comparison of computed digest vs specified one */
+-		while (vec_idx < zfs_uio_iovcnt(mac->cd_uio) && length > 0) {
+-			cur_len = MIN(zfs_uio_iovlen(mac->cd_uio, vec_idx) -
+-			    offset, length);
+-
+-			if (bcmp(digest + scratch_offset,
+-			    zfs_uio_iovbase(mac->cd_uio, vec_idx) + offset,
+-			    cur_len) != 0) {
+-				ret = CRYPTO_INVALID_MAC;
+-				break;
+-			}
+-
+-			length -= cur_len;
+-			vec_idx++;
+-			scratch_offset += cur_len;
+-			offset = 0;
+-		}
+-		break;
+-	}
+-
+-	default:
+-		ret = CRYPTO_ARGUMENTS_BAD;
+-	}
+-
+-	bzero(&sha1_hmac_ctx, sizeof (sha1_hmac_ctx_t));
+-	return (ret);
+-bail:
+-	bzero(&sha1_hmac_ctx, sizeof (sha1_hmac_ctx_t));
+-	mac->cd_length = 0;
+-	return (ret);
+-}
+-
+-/*
+- * KCF software provider context management entry points.
+- */
+-
+-/* ARGSUSED */
+-static int
+-sha1_create_ctx_template(crypto_provider_handle_t provider,
+-    crypto_mechanism_t *mechanism, crypto_key_t *key,
+-    crypto_spi_ctx_template_t *ctx_template, size_t *ctx_template_size,
+-    crypto_req_handle_t req)
+-{
+-	sha1_hmac_ctx_t *sha1_hmac_ctx_tmpl;
+-	uint_t keylen_in_bytes = CRYPTO_BITS2BYTES(key->ck_length);
+-
+-	if ((mechanism->cm_type != SHA1_HMAC_MECH_INFO_TYPE) &&
+-	    (mechanism->cm_type != SHA1_HMAC_GEN_MECH_INFO_TYPE)) {
+-		return (CRYPTO_MECHANISM_INVALID);
+-	}
+-
+-	/* Add support for key by attributes (RFE 4706552) */
+-	if (key->ck_format != CRYPTO_KEY_RAW)
+-		return (CRYPTO_ARGUMENTS_BAD);
+-
+-	/*
+-	 * Allocate and initialize SHA1 context.
+-	 */
+-	sha1_hmac_ctx_tmpl = kmem_alloc(sizeof (sha1_hmac_ctx_t),
+-	    crypto_kmflag(req));
+-	if (sha1_hmac_ctx_tmpl == NULL)
+-		return (CRYPTO_HOST_MEMORY);
+-
+-	if (keylen_in_bytes > SHA1_HMAC_BLOCK_SIZE) {
+-		uchar_t digested_key[SHA1_DIGEST_LENGTH];
+-
+-		/*
+-		 * Hash the passed-in key to get a smaller key.
+-		 * The inner context is used since it hasn't been
+-		 * initialized yet.
+-		 */
+-		PROV_SHA1_DIGEST_KEY(&sha1_hmac_ctx_tmpl->hc_icontext,
+-		    key->ck_data, keylen_in_bytes, digested_key);
+-		sha1_mac_init_ctx(sha1_hmac_ctx_tmpl, digested_key,
+-		    SHA1_DIGEST_LENGTH);
+-	} else {
+-		sha1_mac_init_ctx(sha1_hmac_ctx_tmpl, key->ck_data,
+-		    keylen_in_bytes);
+-	}
+-
+-	sha1_hmac_ctx_tmpl->hc_mech_type = mechanism->cm_type;
+-	*ctx_template = (crypto_spi_ctx_template_t)sha1_hmac_ctx_tmpl;
+-	*ctx_template_size = sizeof (sha1_hmac_ctx_t);
+-
+-
+-	return (CRYPTO_SUCCESS);
+-}
+-
+-static int
+-sha1_free_context(crypto_ctx_t *ctx)
+-{
+-	uint_t ctx_len;
+-	sha1_mech_type_t mech_type;
+-
+-	if (ctx->cc_provider_private == NULL)
+-		return (CRYPTO_SUCCESS);
+-
+-	/*
+-	 * We have to free either SHA1 or SHA1-HMAC contexts, which
+-	 * have different lengths.
+-	 */
+-
+-	mech_type = PROV_SHA1_CTX(ctx)->sc_mech_type;
+-	if (mech_type == SHA1_MECH_INFO_TYPE)
+-		ctx_len = sizeof (sha1_ctx_t);
+-	else {
+-		ASSERT(mech_type == SHA1_HMAC_MECH_INFO_TYPE ||
+-		    mech_type == SHA1_HMAC_GEN_MECH_INFO_TYPE);
+-		ctx_len = sizeof (sha1_hmac_ctx_t);
+-	}
+-
+-	bzero(ctx->cc_provider_private, ctx_len);
+-	kmem_free(ctx->cc_provider_private, ctx_len);
+-	ctx->cc_provider_private = NULL;
+-
+-	return (CRYPTO_SUCCESS);
+-}
+-- 
+2.34.1
+

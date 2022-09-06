@@ -1,0 +1,75 @@
+From d2ff2196a5f07ff7a3816f1de2320b5698408dd6 Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Mon, 20 Jun 2022 22:27:55 +0000
+Subject: [PATCH] Fix -Wformat-overflow warning in zfs_project_handle_dir()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Switch to using asprintf() to satisfy the compiler and resolve the
+potential format-overflow warning.  Not the conditional before the
+sprintf() would have prevented this regardless.
+
+    cmd/zfs/zfs_project.c: In function ‘zfs_project_handle_dir’:
+    cmd/zfs/zfs_project.c:241:38: error: ‘/’ directive writing
+    1 byte into a region of size between 0 and 4352
+    [-Werror=format-overflow=]
+    cmd/zfs/zfs_project.c:241:17: note: ‘sprintf’ output between
+    2 and 4609 bytes into a destination of size 4352
+
+Reviewed-by: Ryan Moeller <ryan@iXsystems.com>
+Reviewed-by: Alexander Motin <mav@FreeBSD.org>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #13528
+Closes #13575
+---
+ cmd/zfs/zfs_project.c | 14 ++++++++++----
+ 1 file changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/cmd/zfs/zfs_project.c b/cmd/zfs/zfs_project.c
+index 341cc005de..24849751ce 100644
+--- a/cmd/zfs/zfs_project.c
++++ b/cmd/zfs/zfs_project.c
+@@ -207,7 +207,6 @@ static int
+ zfs_project_handle_dir(const char *name, zfs_project_control_t *zpc,
+     list_t *head)
+ {
+-	char fullname[PATH_MAX];
+ 	struct dirent *ent;
+ 	DIR *dir;
+ 	int ret = 0;
+@@ -227,21 +226,28 @@ zfs_project_handle_dir(const char *name, zfs_project_control_t *zpc,
+ 	zpc->zpc_ignore_noent = B_TRUE;
+ 	errno = 0;
+ 	while (!ret && (ent = readdir(dir)) != NULL) {
++		char *fullname;
++
+ 		/* skip "." and ".." */
+ 		if (strcmp(ent->d_name, ".") == 0 ||
+ 		    strcmp(ent->d_name, "..") == 0)
+ 			continue;
+ 
+-		if (strlen(ent->d_name) + strlen(name) >=
+-		    sizeof (fullname) + 1) {
++		if (strlen(ent->d_name) + strlen(name) + 1 >= PATH_MAX) {
+ 			errno = ENAMETOOLONG;
+ 			break;
+ 		}
+ 
+-		sprintf(fullname, "%s/%s", name, ent->d_name);
++		if (asprintf(&fullname, "%s/%s", name, ent->d_name) == -1) {
++			errno = ENOMEM;
++			break;
++		}
++
+ 		ret = zfs_project_handle_one(fullname, zpc);
+ 		if (!ret && zpc->zpc_recursive && ent->d_type == DT_DIR)
+ 			zfs_project_item_alloc(head, fullname);
++
++		free(fullname);
+ 	}
+ 
+ 	if (errno && !ret) {
+-- 
+2.34.1
+

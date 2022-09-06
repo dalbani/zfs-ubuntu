@@ -1,0 +1,103 @@
+From 415882d2287419f02d91dfba8059825c62eadb66 Mon Sep 17 00:00:00 2001
+From: Alexander Motin <mav@FreeBSD.org>
+Date: Tue, 27 Jul 2021 19:05:47 -0400
+Subject: [PATCH] Avoid small buffer copying on write
+
+It is wrong for arc_write_ready() to use zfs_abd_scatter_enabled to
+decide whether to reallocate/copy the buffer, because the answer is
+OS-specific and depends on the buffer size.  Instead of that use
+abd_size_alloc_linear(), moved into public header.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Reviewed-by: Brian Atkinson <batkinson@lanl.gov>
+Signed-off-by: Alexander Motin <mav@FreeBSD.org>
+Closes #12425
+---
+ include/sys/abd.h              | 1 +
+ include/sys/abd_impl.h         | 1 -
+ module/os/freebsd/zfs/abd_os.c | 2 +-
+ module/os/linux/zfs/abd_os.c   | 2 +-
+ module/zfs/abd.c               | 2 +-
+ module/zfs/arc.c               | 3 ++-
+ 6 files changed, 6 insertions(+), 5 deletions(-)
+
+diff --git a/include/sys/abd.h b/include/sys/abd.h
+index 6903e0c0e7..5c6bd0c271 100644
+--- a/include/sys/abd.h
++++ b/include/sys/abd.h
+@@ -91,6 +91,7 @@ abd_t *abd_alloc_linear(size_t, boolean_t);
+ abd_t *abd_alloc_gang(void);
+ abd_t *abd_alloc_for_io(size_t, boolean_t);
+ abd_t *abd_alloc_sametype(abd_t *, size_t);
++boolean_t abd_size_alloc_linear(size_t);
+ void abd_gang_add(abd_t *, abd_t *, boolean_t);
+ void abd_free(abd_t *);
+ abd_t *abd_get_offset(abd_t *, size_t);
+diff --git a/include/sys/abd_impl.h b/include/sys/abd_impl.h
+index 113700cd72..e96f1edfc8 100644
+--- a/include/sys/abd_impl.h
++++ b/include/sys/abd_impl.h
+@@ -68,7 +68,6 @@ abd_t *abd_get_offset_scatter(abd_t *, abd_t *, size_t, size_t);
+ void abd_free_struct_impl(abd_t *);
+ void abd_alloc_chunks(abd_t *, size_t);
+ void abd_free_chunks(abd_t *);
+-boolean_t abd_size_alloc_linear(size_t);
+ void abd_update_scatter_stats(abd_t *, abd_stats_op_t);
+ void abd_update_linear_stats(abd_t *, abd_stats_op_t);
+ void abd_verify_scatter(abd_t *);
+diff --git a/module/os/freebsd/zfs/abd_os.c b/module/os/freebsd/zfs/abd_os.c
+index ddd6d68b36..ff7f112ffb 100644
+--- a/module/os/freebsd/zfs/abd_os.c
++++ b/module/os/freebsd/zfs/abd_os.c
+@@ -131,7 +131,7 @@ abd_scatter_chunkcnt(abd_t *abd)
+ boolean_t
+ abd_size_alloc_linear(size_t size)
+ {
+-	return (size < zfs_abd_scatter_min_size ? B_TRUE : B_FALSE);
++	return (!zfs_abd_scatter_enabled || size < zfs_abd_scatter_min_size);
+ }
+ 
+ void
+diff --git a/module/os/linux/zfs/abd_os.c b/module/os/linux/zfs/abd_os.c
+index 8afa222dea..6067950d5c 100644
+--- a/module/os/linux/zfs/abd_os.c
++++ b/module/os/linux/zfs/abd_os.c
+@@ -638,7 +638,7 @@ abd_alloc_zero_scatter(void)
+ boolean_t
+ abd_size_alloc_linear(size_t size)
+ {
+-	return (size < zfs_abd_scatter_min_size ? B_TRUE : B_FALSE);
++	return (!zfs_abd_scatter_enabled || size < zfs_abd_scatter_min_size);
+ }
+ 
+ void
+diff --git a/module/zfs/abd.c b/module/zfs/abd.c
+index 42bf3e3036..8ee8e7e574 100644
+--- a/module/zfs/abd.c
++++ b/module/zfs/abd.c
+@@ -181,7 +181,7 @@ abd_free_struct(abd_t *abd)
+ abd_t *
+ abd_alloc(size_t size, boolean_t is_metadata)
+ {
+-	if (!zfs_abd_scatter_enabled || abd_size_alloc_linear(size))
++	if (abd_size_alloc_linear(size))
+ 		return (abd_alloc_linear(size, is_metadata));
+ 
+ 	VERIFY3U(size, <=, SPA_MAXBLOCKSIZE);
+diff --git a/module/zfs/arc.c b/module/zfs/arc.c
+index 9f08f63ea6..8d38826947 100644
+--- a/module/zfs/arc.c
++++ b/module/zfs/arc.c
+@@ -6917,7 +6917,8 @@ arc_write_ready(zio_t *zio)
+ 		arc_hdr_alloc_abd(hdr, ARC_HDR_DO_ADAPT | ARC_HDR_ALLOC_RDATA |
+ 		    ARC_HDR_USE_RESERVE);
+ 		abd_copy(hdr->b_crypt_hdr.b_rabd, zio->io_abd, psize);
+-	} else if (zfs_abd_scatter_enabled || !arc_can_share(hdr, buf)) {
++	} else if (!abd_size_alloc_linear(arc_buf_size(buf)) ||
++	    !arc_can_share(hdr, buf)) {
+ 		/*
+ 		 * Ideally, we would always copy the io_abd into b_pabd, but the
+ 		 * user may have disabled compressed ARC, thus we must check the
+-- 
+2.34.1
+

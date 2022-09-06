@@ -1,0 +1,110 @@
+From fdb80a230168045fcd9977cb0425109aa63963d3 Mon Sep 17 00:00:00 2001
+From: Alexander Motin <mav@FreeBSD.org>
+Date: Fri, 4 Feb 2022 16:06:38 -0500
+Subject: [PATCH] Add more control/visibility to spa_load_verify().
+
+Use error thresholds from policy to control whether to scrub data
+and/or metadata.  If threshold is set to UINT64_MAX, then caller
+probably does not care about result and we may skip that part.
+
+By default import neither set the data error threshold nor read
+the error counter, so skip the data scrub for faster import.
+Metadata are still scrubbed and fail if even single error found.
+
+While there just for symmetry return number of metadata errors in
+case threshold is not set to zero and we haven't reached it.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Reviewed-by: Pavel Zakharov <pavel.zakharov@delphix.com>
+Signed-off-by: Alexander Motin <mav@FreeBSD.org>
+Closes #13022
+---
+ include/sys/fs/zfs.h |  1 +
+ module/zfs/spa.c     | 20 +++++++++++++++++---
+ 2 files changed, 18 insertions(+), 3 deletions(-)
+
+diff --git a/include/sys/fs/zfs.h b/include/sys/fs/zfs.h
+index 71d736d5cc..5bbac576df 100644
+--- a/include/sys/fs/zfs.h
++++ b/include/sys/fs/zfs.h
+@@ -757,6 +757,7 @@ typedef struct zpool_load_policy {
+ 
+ /* Rewind data discovered */
+ #define	ZPOOL_CONFIG_LOAD_TIME		"rewind_txg_ts"
++#define	ZPOOL_CONFIG_LOAD_META_ERRORS	"verify_meta_errors"
+ #define	ZPOOL_CONFIG_LOAD_DATA_ERRORS	"verify_data_errors"
+ #define	ZPOOL_CONFIG_REWIND_TIME	"seconds_of_rewind"
+ 
+diff --git a/module/zfs/spa.c b/module/zfs/spa.c
+index 2e1c386162..71ce5e7504 100644
+--- a/module/zfs/spa.c
++++ b/module/zfs/spa.c
+@@ -2256,6 +2256,7 @@ spa_claim_notify(zio_t *zio)
+ }
+ 
+ typedef struct spa_load_error {
++	boolean_t	sle_verify_data;
+ 	uint64_t	sle_meta_count;
+ 	uint64_t	sle_data_count;
+ } spa_load_error_t;
+@@ -2296,6 +2297,9 @@ static int
+ spa_load_verify_cb(spa_t *spa, zilog_t *zilog, const blkptr_t *bp,
+     const zbookmark_phys_t *zb, const dnode_phys_t *dnp, void *arg)
+ {
++	zio_t *rio = arg;
++	spa_load_error_t *sle = rio->io_private;
++
+ 	(void) zilog, (void) dnp;
+ 
+ 	if (zb->zb_level == ZB_DNODE_LEVEL || BP_IS_HOLE(bp) ||
+@@ -2308,12 +2312,12 @@ spa_load_verify_cb(spa_t *spa, zilog_t *zilog, const blkptr_t *bp,
+ 	 */
+ 	if (!spa_load_verify_metadata)
+ 		return (0);
+-	if (!BP_IS_METADATA(bp) && !spa_load_verify_data)
++	if (!BP_IS_METADATA(bp) &&
++	    (!spa_load_verify_data || !sle->sle_verify_data))
+ 		return (0);
+ 
+ 	uint64_t maxinflight_bytes =
+ 	    arc_target_bytes() >> spa_load_verify_shift;
+-	zio_t *rio = arg;
+ 	size_t size = BP_GET_PSIZE(bp);
+ 
+ 	mutex_enter(&spa->spa_scrub_lock);
+@@ -2351,7 +2355,8 @@ spa_load_verify(spa_t *spa)
+ 
+ 	zpool_get_load_policy(spa->spa_config, &policy);
+ 
+-	if (policy.zlp_rewind & ZPOOL_NEVER_REWIND)
++	if (policy.zlp_rewind & ZPOOL_NEVER_REWIND ||
++	    policy.zlp_maxmeta == UINT64_MAX)
+ 		return (0);
+ 
+ 	dsl_pool_config_enter(spa->spa_dsl_pool, FTAG);
+@@ -2362,6 +2367,13 @@ spa_load_verify(spa_t *spa)
+ 	if (error != 0)
+ 		return (error);
+ 
++	/*
++	 * Verify data only if we are rewinding or error limit was set.
++	 * Otherwise nothing except dbgmsg care about it to waste time.
++	 */
++	sle.sle_verify_data = (policy.zlp_rewind & ZPOOL_REWIND_MASK) ||
++	    (policy.zlp_maxdata < UINT64_MAX);
++
+ 	rio = zio_root(spa, NULL, &sle,
+ 	    ZIO_FLAG_CANFAIL | ZIO_FLAG_SPECULATIVE);
+ 
+@@ -2405,6 +2417,8 @@ spa_load_verify(spa_t *spa)
+ 		    spa->spa_load_txg_ts);
+ 		fnvlist_add_int64(spa->spa_load_info, ZPOOL_CONFIG_REWIND_TIME,
+ 		    loss);
++		fnvlist_add_uint64(spa->spa_load_info,
++		    ZPOOL_CONFIG_LOAD_META_ERRORS, sle.sle_meta_count);
+ 		fnvlist_add_uint64(spa->spa_load_info,
+ 		    ZPOOL_CONFIG_LOAD_DATA_ERRORS, sle.sle_data_count);
+ 	} else {
+-- 
+2.34.1
+

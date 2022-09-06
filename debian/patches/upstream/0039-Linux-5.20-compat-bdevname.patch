@@ -1,0 +1,102 @@
+From 58571ba447ecc1f08a6807c8380f916fdb5a9958 Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Wed, 3 Aug 2022 11:35:47 -0700
+Subject: [PATCH] Linux 5.20 compat: bdevname()
+
+As of the Linux 5.20 kernel bdevname() has been removed, all
+callers should use snprintf() and the "%pg" format specifier.
+
+Reviewed-by: Tony Hutter <hutter2@llnl.gov>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #13728
+---
+ config/kernel-blkdev.m4         | 28 ++++++++++++++++++++++++++++
+ module/os/linux/zfs/vdev_disk.c | 12 +++++++++++-
+ 2 files changed, 39 insertions(+), 1 deletion(-)
+
+diff --git a/config/kernel-blkdev.m4 b/config/kernel-blkdev.m4
+index fb7b1a4586..462d6c6efa 100644
+--- a/config/kernel-blkdev.m4
++++ b/config/kernel-blkdev.m4
+@@ -294,6 +294,32 @@ AC_DEFUN([ZFS_AC_KERNEL_BLKDEV_BDEV_WHOLE], [
+ 	])
+ ])
+ 
++dnl #
++dnl # 5.20 API change,
++dnl # Removed bdevname(), snprintf(.., %pg) should be used.
++dnl #
++AC_DEFUN([ZFS_AC_KERNEL_SRC_BLKDEV_BDEVNAME], [
++	ZFS_LINUX_TEST_SRC([bdevname], [
++		#include <linux/fs.h>
++		#include <linux/blkdev.h>
++	], [
++		struct block_device *bdev __attribute__ ((unused)) = NULL;
++		char path[BDEVNAME_SIZE];
++
++		(void) bdevname(bdev, path);
++	])
++])
++
++AC_DEFUN([ZFS_AC_KERNEL_BLKDEV_BDEVNAME], [
++	AC_MSG_CHECKING([whether bdevname() exists])
++	ZFS_LINUX_TEST_RESULT([bdevname], [
++		AC_DEFINE(HAVE_BDEVNAME, 1, [bdevname() is available])
++		AC_MSG_RESULT(yes)
++	], [
++		AC_MSG_RESULT(no)
++	])
++])
++
+ dnl #
+ dnl # 5.19 API: blkdev_issue_secure_erase()
+ dnl # 3.10 API: blkdev_issue_discard(..., BLKDEV_DISCARD_SECURE)
+@@ -377,6 +403,7 @@ AC_DEFUN([ZFS_AC_KERNEL_SRC_BLKDEV], [
+ 	ZFS_AC_KERNEL_SRC_BLKDEV_CHECK_DISK_CHANGE
+ 	ZFS_AC_KERNEL_SRC_BLKDEV_BDEV_CHECK_MEDIA_CHANGE
+ 	ZFS_AC_KERNEL_SRC_BLKDEV_BDEV_WHOLE
++	ZFS_AC_KERNEL_SRC_BLKDEV_BDEVNAME
+ 	ZFS_AC_KERNEL_SRC_BLKDEV_ISSUE_SECURE_ERASE
+ ])
+ 
+@@ -391,6 +418,7 @@ AC_DEFUN([ZFS_AC_KERNEL_BLKDEV], [
+ 	ZFS_AC_KERNEL_BLKDEV_CHECK_DISK_CHANGE
+ 	ZFS_AC_KERNEL_BLKDEV_BDEV_CHECK_MEDIA_CHANGE
+ 	ZFS_AC_KERNEL_BLKDEV_BDEV_WHOLE
++	ZFS_AC_KERNEL_BLKDEV_BDEVNAME
+ 	ZFS_AC_KERNEL_BLKDEV_GET_ERESTARTSYS
+ 	ZFS_AC_KERNEL_BLKDEV_ISSUE_SECURE_ERASE
+ ])
+diff --git a/module/os/linux/zfs/vdev_disk.c b/module/os/linux/zfs/vdev_disk.c
+index 97cd90bf0a..d19595706c 100644
+--- a/module/os/linux/zfs/vdev_disk.c
++++ b/module/os/linux/zfs/vdev_disk.c
+@@ -105,6 +105,16 @@ bdev_whole(struct block_device *bdev)
+ }
+ #endif
+ 
++#if defined(HAVE_BDEVNAME)
++#define	vdev_bdevname(bdev, name)	bdevname(bdev, name)
++#else
++static inline void
++vdev_bdevname(struct block_device *bdev, char *name)
++{
++	snprintf(name, BDEVNAME_SIZE, "%pg", bdev);
++}
++#endif
++
+ /*
+  * Returns the maximum expansion capacity of the block device (in bytes).
+  *
+@@ -204,7 +214,7 @@ vdev_disk_open(vdev_t *v, uint64_t *psize, uint64_t *max_psize,
+ 
+ 		if (bdev) {
+ 			if (v->vdev_expanding && bdev != bdev_whole(bdev)) {
+-				bdevname(bdev_whole(bdev), disk_name + 5);
++				vdev_bdevname(bdev_whole(bdev), disk_name + 5);
+ 				/*
+ 				 * If userland has BLKPG_RESIZE_PARTITION,
+ 				 * then it should have updated the partition
+-- 
+2.34.1
+

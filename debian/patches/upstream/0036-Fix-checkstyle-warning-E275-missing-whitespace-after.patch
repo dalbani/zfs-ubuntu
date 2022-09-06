@@ -1,0 +1,29 @@
+From b06aff105cd7adb687f1b0ce269f9d661cc3e774 Mon Sep 17 00:00:00 2001
+From: Tino Reichardt <milky-zfs@mcmilk.de>
+Date: Mon, 1 Aug 2022 18:49:35 +0200
+Subject: [PATCH] Fix checkstyle warning: E275 missing whitespace after keyword
+
+Reviewed-by: George Melikov <mail@gmelikov.ru>
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Tino Reichardt <milky-zfs@mcmilk.de>
+Closes #13710
+---
+ contrib/pyzfs/libzfs_core/_constants.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/contrib/pyzfs/libzfs_core/_constants.py b/contrib/pyzfs/libzfs_core/_constants.py
+index 2dfed224c2..32402aec21 100644
+--- a/contrib/pyzfs/libzfs_core/_constants.py
++++ b/contrib/pyzfs/libzfs_core/_constants.py
+@@ -104,7 +104,7 @@ zfs_errno = enum_with_offset(1024, [
+ )
+ # compat before we used the enum helper for these values
+ ZFS_ERR_CHECKPOINT_EXISTS = zfs_errno.ZFS_ERR_CHECKPOINT_EXISTS
+-assert(ZFS_ERR_CHECKPOINT_EXISTS == 1024)
++assert (ZFS_ERR_CHECKPOINT_EXISTS == 1024)
+ ZFS_ERR_DISCARDING_CHECKPOINT = zfs_errno.ZFS_ERR_DISCARDING_CHECKPOINT
+ ZFS_ERR_NO_CHECKPOINT = zfs_errno.ZFS_ERR_NO_CHECKPOINT
+ ZFS_ERR_DEVRM_IN_PROGRESS = zfs_errno.ZFS_ERR_DEVRM_IN_PROGRESS
+-- 
+2.34.1
+

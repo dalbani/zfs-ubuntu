@@ -1,0 +1,347 @@
+From fcbddc7f7ca7210f5b68580ca20d7c604dd390b3 Mon Sep 17 00:00:00 2001
+From: Paul Zuchowski <pzuchowski@datto.com>
+Date: Wed, 3 Aug 2022 17:12:23 +0000
+Subject: [PATCH] Fix problem with zdb -d
+
+zdb -d <pool>/<objset ID> does not work when
+other command line arguments are included i.e.
+zdb -U <cachefile> -d <pool>/<objset ID>
+This change fixes the command line parsing
+to handle this situation.  Also fix issue
+where zdb -r <dataset> <file> does not handle
+the root <dataset> of the pool. Introduce -N
+option to force <objset ID> to be interpreted
+as a numeric objsetID.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Reviewed-by: Rich Ercolani <rincebrain@gmail.com>
+Reviewed-by: Tony Nguyen <tony.nguyen@delphix.com>
+Signed-off-by: Paul Zuchowski <pzuchowski@datto.com>
+Closes #12845
+Closes #12944
+---
+ cmd/zdb/zdb.c                                 | 111 +++++++++++++-----
+ man/man8/zdb.8                                |  18 ++-
+ .../functional/cli_root/zdb/zdb_args_neg.ksh  |   2 +-
+ .../functional/cli_root/zdb/zdb_objset_id.ksh |  42 ++++++-
+ 4 files changed, 139 insertions(+), 34 deletions(-)
+
+diff --git a/cmd/zdb/zdb.c b/cmd/zdb/zdb.c
+index 1a6dcf8213..db8e2200a7 100644
+--- a/cmd/zdb/zdb.c
++++ b/cmd/zdb/zdb.c
+@@ -8272,6 +8272,23 @@ zdb_embedded_block(char *thing)
+ 	free(buf);
+ }
+ 
++/* check for valid hex or decimal numeric string */
++static boolean_t
++zdb_numeric(char *str)
++{
++	int i = 0;
++
++	if (strlen(str) == 0)
++		return (B_FALSE);
++	if (strncmp(str, "0x", 2) == 0 || strncmp(str, "0X", 2) == 0)
++		i = 2;
++	for (; i < strlen(str); i++) {
++		if (!isxdigit(str[i]))
++			return (B_FALSE);
++	}
++	return (B_TRUE);
++}
++
+ int
+ main(int argc, char **argv)
+ {
+@@ -8317,7 +8334,7 @@ main(int argc, char **argv)
+ 	zfs_btree_verify_intensity = 3;
+ 
+ 	while ((c = getopt(argc, argv,
+-	    "AbcCdDeEFGhiI:klLmMo:Op:PqrRsSt:uU:vVx:XYyZ")) != -1) {
++	    "AbcCdDeEFGhiI:klLmMNo:Op:PqrRsSt:uU:vVx:XYyZ")) != -1) {
+ 		switch (c) {
+ 		case 'b':
+ 		case 'c':
+@@ -8331,6 +8348,7 @@ main(int argc, char **argv)
+ 		case 'l':
+ 		case 'm':
+ 		case 'M':
++		case 'N':
+ 		case 'O':
+ 		case 'r':
+ 		case 'R':
+@@ -8422,31 +8440,6 @@ main(int argc, char **argv)
+ 		(void) fprintf(stderr, "-p option requires use of -e\n");
+ 		usage();
+ 	}
+-	if (dump_opt['d'] || dump_opt['r']) {
+-		/* <pool>[/<dataset | objset id> is accepted */
+-		if (argv[2] && (objset_str = strchr(argv[2], '/')) != NULL &&
+-		    objset_str++ != NULL) {
+-			char *endptr;
+-			errno = 0;
+-			objset_id = strtoull(objset_str, &endptr, 0);
+-			/* dataset 0 is the same as opening the pool */
+-			if (errno == 0 && endptr != objset_str &&
+-			    objset_id != 0) {
+-				target_is_spa = B_FALSE;
+-				dataset_lookup = B_TRUE;
+-			} else if (objset_id != 0) {
+-				printf("failed to open objset %s "
+-				    "%llu %s", objset_str,
+-				    (u_longlong_t)objset_id,
+-				    strerror(errno));
+-				exit(1);
+-			}
+-			/* normal dataset name not an objset ID */
+-			if (endptr == objset_str) {
+-				objset_id = -1;
+-			}
+-		}
+-	}
+ 
+ #if defined(_LP64)
+ 	/*
+@@ -8486,7 +8479,7 @@ main(int argc, char **argv)
+ 		verbose = MAX(verbose, 1);
+ 
+ 	for (c = 0; c < 256; c++) {
+-		if (dump_all && strchr("AeEFklLOPrRSXy", c) == NULL)
++		if (dump_all && strchr("AeEFklLNOPrRSXy", c) == NULL)
+ 			dump_opt[c] = 1;
+ 		if (dump_opt[c])
+ 			dump_opt[c] += verbose;
+@@ -8525,6 +8518,7 @@ main(int argc, char **argv)
+ 		return (dump_path(argv[0], argv[1], NULL));
+ 	}
+ 	if (dump_opt['r']) {
++		target_is_spa = B_FALSE;
+ 		if (argc != 3)
+ 			usage();
+ 		dump_opt['v'] = verbose;
+@@ -8535,6 +8529,10 @@ main(int argc, char **argv)
+ 		rewind = ZPOOL_DO_REWIND |
+ 		    (dump_opt['X'] ? ZPOOL_EXTREME_REWIND : 0);
+ 
++	/* -N implies -d */
++	if (dump_opt['N'] && dump_opt['d'] == 0)
++		dump_opt['d'] = dump_opt['N'];
++
+ 	if (nvlist_alloc(&policy, NV_UNIQUE_NAME_TYPE, 0) != 0 ||
+ 	    nvlist_add_uint64(policy, ZPOOL_LOAD_REQUEST_TXG, max_txg) != 0 ||
+ 	    nvlist_add_uint32(policy, ZPOOL_LOAD_REWIND_POLICY, rewind) != 0)
+@@ -8553,6 +8551,34 @@ main(int argc, char **argv)
+ 		targetlen = strlen(target);
+ 		if (targetlen && target[targetlen - 1] == '/')
+ 			target[targetlen - 1] = '\0';
++		/*
++		 * See if an objset ID was supplied (-d <pool>/<objset ID>).
++		 * To disambiguate tank/100, consider the 100 as objsetID
++		 * if -N was given, otherwise 100 is an objsetID iff
++		 * tank/100 as a named dataset fails on lookup.
++		 */
++		objset_str = strchr(target, '/');
++		if (objset_str && strlen(objset_str) > 1 &&
++		    zdb_numeric(objset_str + 1)) {
++			char *endptr;
++			errno = 0;
++			objset_str++;
++			objset_id = strtoull(objset_str, &endptr, 0);
++			/* dataset 0 is the same as opening the pool */
++			if (errno == 0 && endptr != objset_str &&
++			    objset_id != 0) {
++				if (dump_opt['N'])
++					dataset_lookup = B_TRUE;
++			}
++			/* normal dataset name not an objset ID */
++			if (endptr == objset_str) {
++				objset_id = -1;
++			}
++		} else if (objset_str && !zdb_numeric(objset_str + 1) &&
++		    dump_opt['N']) {
++			printf("Supply a numeric objset ID with -N\n");
++			exit(1);
++		}
+ 	} else {
+ 		target_pool = target;
+ 	}
+@@ -8670,13 +8696,27 @@ main(int argc, char **argv)
+ 			}
+ 			return (error);
+ 		} else {
++			target_pool = strdup(target);
++			if (strpbrk(target, "/@") != NULL)
++				*strpbrk(target_pool, "/@") = '\0';
++
+ 			zdb_set_skip_mmp(target);
++			/*
++			 * If -N was supplied, the user has indicated that
++			 * zdb -d <pool>/<objsetID> is in effect.  Otherwise
++			 * we first assume that the dataset string is the
++			 * dataset name.  If dmu_objset_hold fails with the
++			 * dataset string, and we have an objset_id, retry the
++			 * lookup with the objsetID.
++			 */
++			boolean_t retry = B_TRUE;
++retry_lookup:
+ 			if (dataset_lookup == B_TRUE) {
+ 				/*
+ 				 * Use the supplied id to get the name
+ 				 * for open_objset.
+ 				 */
+-				error = spa_open(target, &spa, FTAG);
++				error = spa_open(target_pool, &spa, FTAG);
+ 				if (error == 0) {
+ 					error = name_from_objset_id(spa,
+ 					    objset_id, dsname);
+@@ -8685,10 +8725,23 @@ main(int argc, char **argv)
+ 						target = dsname;
+ 				}
+ 			}
+-			if (error == 0)
++			if (error == 0) {
++				if (objset_id > 0 && retry) {
++					int err = dmu_objset_hold(target, FTAG,
++					    &os);
++					if (err) {
++						dataset_lookup = B_TRUE;
++						retry = B_FALSE;
++						goto retry_lookup;
++					} else {
++						dmu_objset_rele(os, FTAG);
++					}
++				}
+ 				error = open_objset(target, FTAG, &os);
++			}
+ 			if (error == 0)
+ 				spa = dmu_objset_spa(os);
++			free(target_pool);
+ 		}
+ 	}
+ 	nvlist_free(policy);
+diff --git a/man/man8/zdb.8 b/man/man8/zdb.8
+index a8a9442190..6a7ea2cbf1 100644
+--- a/man/man8/zdb.8
++++ b/man/man8/zdb.8
+@@ -23,7 +23,7 @@
+ .Nd display ZFS storage pool debugging and consistency information
+ .Sh SYNOPSIS
+ .Nm
+-.Op Fl AbcdDFGhikLMPsvXYy
++.Op Fl AbcdDFGhikLMNPsvXYy
+ .Op Fl e Oo Fl V Oc Oo Fl p Ar path Oc Ns …
+ .Op Fl I Ar inflight I/Os
+ .Oo Fl o Ar var Ns = Ns Ar value Oc Ns …
+@@ -137,6 +137,14 @@ also display the configuration that would be used were the pool to be imported.
+ Display information about datasets.
+ Specified once, displays basic dataset information: ID, create transaction,
+ size, and object count.
++See
++.Fl N
++for determining if
++.Op Ar poolname Ns Op / Ns Ar dataset | objset ID
++is to use the specified
++.Op Ar dataset | objset ID
++as a string (dataset name) or a number (objset ID) when
++datasets have numeric names.
+ .Pp
+ If specified multiple times provides greater and greater verbosity.
+ .Pp
+@@ -272,6 +280,14 @@ Also display information about the maximum contiguous free space and the
+ percentage of free space in each space map.
+ .It Fl MMM
+ Display every spacemap record.
++.It Fl N
++Same as
++.Fl d
++but force zdb to interpret the
++.Op Ar dataset | objset ID
++in
++.Op Ar poolname Ns Op / Ns Ar dataset | objset ID
++as a numeric objset ID.
+ .It Fl O Ar dataset path
+ Look up the specified
+ .Ar path
+diff --git a/tests/zfs-tests/tests/functional/cli_root/zdb/zdb_args_neg.ksh b/tests/zfs-tests/tests/functional/cli_root/zdb/zdb_args_neg.ksh
+index ae948bb9b7..cb88def7cc 100755
+--- a/tests/zfs-tests/tests/functional/cli_root/zdb/zdb_args_neg.ksh
++++ b/tests/zfs-tests/tests/functional/cli_root/zdb/zdb_args_neg.ksh
+@@ -58,7 +58,7 @@ set -A args "create" "add" "destroy" "import fakepool" \
+     "setvprop" "blah blah" "-%" "--?" "-*" "-=" \
+     "-a" "-f" "-g" "-j" "-n" "-o" "-p" "-p /tmp" \
+     "-t" "-w" "-z" "-E" "-H" "-I" "-J" "-K" \
+-    "-N" "-Q" "-R" "-T" "-W"
++    "-Q" "-R" "-T" "-W"
+ 
+ log_assert "Execute zdb using invalid parameters."
+ 
+diff --git a/tests/zfs-tests/tests/functional/cli_root/zdb/zdb_objset_id.ksh b/tests/zfs-tests/tests/functional/cli_root/zdb/zdb_objset_id.ksh
+index d23cc43c90..ce0732a6f9 100755
+--- a/tests/zfs-tests/tests/functional/cli_root/zdb/zdb_objset_id.ksh
++++ b/tests/zfs-tests/tests/functional/cli_root/zdb/zdb_objset_id.ksh
+@@ -30,10 +30,16 @@
+ # 6. Confirm names
+ # 7. Run zdb -dddddd pool/objsetID objectID (hex) 
+ # 8. Confirm names
+-# 9. Obtain objsetID from /proc/spl/kstat/zfs/testpool/obset-0x<ID>
++# 9. Repeat with zdb -NNNNNN pool/objsetID objectID
++# 10. Obtain objsetID from /proc/spl/kstat/zfs/testpool/obset-0x<ID>
+ #    (linux only)
+-# 10. Run zdb -dddddd pool/objsetID (hex)
+-# 11. Match name from zdb against proc entry
++# 11. Run zdb -dddddd pool/objsetID (hex)
++# 12. Match name from zdb against proc entry
++# 13. Create dataset with hex numeric name
++# 14. Create dataset with decimal numeric name
++# 15. zdb -d for numeric datasets succeeds
++# 16. zdb -N for numeric datasets fails
++# 17. zdb -dN for numeric datasets fails
+ #
+ 
+ function cleanup
+@@ -78,6 +84,17 @@ do
+ 	(( $? != 0 )) && log_fail \
+ 	    "zdb -dddddd $TESTPOOL/$id $obj failed $reason"
+ 	obj=$(printf "0x%X" $obj)
++
++ 	log_note "zdb -NNNNNN $TESTPOOL/$id $obj"
++        output=$(zdb -NNNNNN $TESTPOOL/$id $obj)
++        reason="($TESTPOOL/$TESTFS not in zdb output)"
++        echo $output |grep "$TESTPOOL/$TESTFS" > /dev/null
++        (( $? != 0 )) && log_fail \
++            "zdb -NNNNNN $TESTPOOL/$id $obj failed $reason"
++        reason="(file1 not in zdb output)"
++        echo $output |grep "file1" > /dev/null
++        (( $? != 0 )) && log_fail \
++            "zdb -NNNNNN $TESTPOOL/$id $obj failed $reason"
+ done
+ 
+ if is_linux; then
+@@ -94,4 +111,23 @@ if is_linux; then
+ 	    "zdb -dddddd $TESTPOOL/$objset_hex failed $reason"
+ fi
+ 
++log_must zfs create $TESTPOOL/0x400
++log_must zfs create $TESTPOOL/100
++output=$(zdb -d $TESTPOOL/0x400)
++reason="($TESTPOOL/0x400 not in zdb output)"
++echo $output |grep "$TESTPOOL/0x400" > /dev/null
++(( $? != 0 )) && log_fail \
++    "zdb -d $TESTPOOL/0x400 failed $reason"
++output=$(zdb -d $TESTPOOL/100)
++reason="($TESTPOOL/100 not in zdb output)"
++echo $output |grep "$TESTPOOL/100" > /dev/null
++(( $? != 0 )) && log_fail \
++    "zdb -d $TESTPOOL/100 failed $reason"
++
++# force numeric interpretation, should fail
++log_mustnot zdb -N $TESTPOOL/0x400
++log_mustnot zdb -N $TESTPOOL/100
++log_mustnot zdb -Nd $TESTPOOL/0x400
++log_mustnot zdb -Nd $TESTPOOL/100
++
+ log_pass "zdb -d <pool>/<objset ID> generates the correct names."
+-- 
+2.34.1
+
