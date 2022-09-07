@@ -67,3 +67,4 @@ ubuntu/4510-silently-ignore-modprobe-failure.patch
 ubuntu/4751-suppress-types.patch
 
 zzstd-version-bump.patch
+cross-compile.patch
