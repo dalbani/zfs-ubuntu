@@ -1,3 +1,9 @@
+zfs-linux (2.1.5-1ubuntu5) kinetic; urgency=medium
+
+  * Fix cross-compile of the dkms module.
+
+ -- Dimitri John Ledkov <dimitri.ledkov@canonical.com>  Wed, 07 Sep 2022 10:01:07 +0100
+
 zfs-linux (2.1.5-1ubuntu4) kinetic; urgency=medium
 
   * Cherry-pick zfs-2.1.6-staging patches for Linux 6.0 compat.
