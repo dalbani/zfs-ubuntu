@@ -1,3 +1,11 @@
+zfs-linux (2.1.5-1ubuntu6) kinetic; urgency=medium
+
+  * Use detected CC compiler, if KERNEL_CC is undefined. Fixes
+    cross-building using non-standard compiler, i.e. $(arch)-gcc-12. LP:
+    #1991664
+
+ -- Dimitri John Ledkov <dimitri.ledkov@canonical.com>  Tue, 04 Oct 2022 14:34:16 +0100
+
 zfs-linux (2.1.5-1ubuntu5) kinetic; urgency=medium
 
   * Fix cross-compile of the dkms module.
