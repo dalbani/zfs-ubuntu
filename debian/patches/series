@@ -68,3 +68,4 @@ ubuntu/4751-suppress-types.patch
 
 zzstd-version-bump.patch
 cross-compile.patch
+always-define-kernel-cc.patch

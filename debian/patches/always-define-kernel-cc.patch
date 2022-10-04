@@ -1,0 +1,18 @@
+Description: Always define CC
+ Use detected CC compiler, if KERNEL_CC is undefined. Fixes
+ cross-building using non-standard compiler, i.e. $(arch)-gcc-12.
+Author: Dimitri John Ledkov <dimitri.ledkov@canonical.com>
+
+
+Index: zfs-linux-2.1.5/config/kernel.m4
+===================================================================
+--- zfs-linux-2.1.5.orig/config/kernel.m4
++++ zfs-linux-2.1.5/config/kernel.m4
+@@ -643,6 +643,7 @@ AC_DEFUN([ZFS_LINUX_COMPILE], [
+ 		building kernel modules])
+ 	AC_ARG_VAR([KERNEL_LLVM], [Binary option to
+ 		build kernel modules with LLVM/CLANG toolchain])
++	KERNEL_CC="${KERNEL_CC:-$CC}"
+ 	AC_TRY_COMMAND([
+ 	    KBUILD_MODPOST_NOFINAL="$5" KBUILD_MODPOST_WARN="$6"
+ 	    make modules -k -j$TEST_JOBS ${KERNEL_CC:+CC=$KERNEL_CC}
