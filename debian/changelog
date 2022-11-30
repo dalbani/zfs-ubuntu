@@ -1,3 +1,11 @@
+zfs-linux (0.8.3-1ubuntu12.15) focal; urgency=medium
+
+  * Fix zfs_arc_max getting ignored when value below allmem/32 (LP: #1964992)
+   - d/p/4930-Dont-ignore-zfs_arc_max-below-allmem-32.patch
+   - d/p/4931-Restore-processing-for-arc-min-and-arc-max.patch 
+
+ -- Ghadi Elie Rahme <ghadi.rahme@canonical.com>  Wed, 30 Nov 2022 15:46:58 +0000
+
 zfs-linux (0.8.3-1ubuntu12.14) focal; urgency=medium
 
   * Fix zfs_get_data access to files causing panics (LP: #1946686)
