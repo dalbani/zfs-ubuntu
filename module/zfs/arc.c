@@ -5096,7 +5096,7 @@ arc_adjust_cb_check(void *arg, zthr_t *zthr)
 	 * their actual internal variable counterparts. Without this,
 	 * changing those module params at runtime would have no effect.
 	 */
-	arc_tuning_update(B_FALSE);
+	arc_tuning_update(B_TRUE);
 
 	/*
 	 * This is necessary in order to keep the kstat information
@@ -7557,10 +7557,9 @@ arc_state_multilist_index_func(multilist_t *ml, void *obj)
 	if ((do_warn) && (tuning) && ((tuning) != (value))) {	\
 		cmn_err(CE_WARN,				\
 		    "ignoring tunable %s (using %llu instead)",	\
-		    (#tuning), (value));			\
+		    (#tuning), (u_longlong_t)(value));	\
 	}							\
 } while (0)
-
 /*
  * Called during module initialization and periodically thereafter to
  * apply reasonable changes to the exposed performance tunings.  Can also be
@@ -7588,7 +7587,7 @@ arc_tuning_update(boolean_t verbose)
 	    (zfs_arc_max >= 64 << 20) && (zfs_arc_max < allmem) &&
 	    (zfs_arc_max > arc_c_min)) {
 		arc_c_max = zfs_arc_max;
-		arc_c = arc_c_max;
+		arc_c = MIN(arc_c, arc_c_max);
 		arc_p = (arc_c >> 1);
 		if (arc_meta_limit > arc_c_max)
 			arc_meta_limit = arc_c_max;
@@ -7625,8 +7624,7 @@ arc_tuning_update(boolean_t verbose)
 	    (limit >= arc_meta_min) &&
 	    (limit <= arc_meta_limit))
 		arc_dnode_limit = limit;
-	WARN_IF_TUNING_IGNORED(zfs_arc_dnode_limit, arc_dnode_limit,
-	    verbose);
+	WARN_IF_TUNING_IGNORED(zfs_arc_dnode_limit, arc_dnode_limit,verbose);
 
 	/* Valid range: 1 - N */
 	if (zfs_arc_grow_retry)
@@ -7656,13 +7654,13 @@ arc_tuning_update(boolean_t verbose)
 	if ((zfs_arc_lotsfree_percent >= 0) &&
 	    (zfs_arc_lotsfree_percent <= 100))
 		arc_lotsfree_percent = zfs_arc_lotsfree_percent;
-	WARN_IF_TUNING_IGNORED(zfs_arc_lotsfree_percent, arc_lotsfree_percent,
-	    verbose);
+	WARN_IF_TUNING_IGNORED(zfs_arc_lotsfree_percent, arc_lotsfree_percent,verbose);
 
 	/* Valid range: 0 - <all physical memory> */
 	if ((zfs_arc_sys_free) && (zfs_arc_sys_free != arc_sys_free))
 		arc_sys_free = MIN(MAX(zfs_arc_sys_free, 0), allmem);
 	WARN_IF_TUNING_IGNORED(zfs_arc_sys_free, arc_sys_free, verbose);
+
 }
 
 static void
@@ -7827,13 +7825,28 @@ arc_init(void)
 	arc_sys_free = MAX(allmem / 64, (512 * 1024));
 	arc_need_free = 0;
 #endif
+	/* Set min cache to 1/32 of all memory, or 32MB, whichever is more. */
+	arc_c_min = MAX(allmem / 32, 2ULL << SPA_MAXBLOCKSHIFT);
 
-	/* Set max to 1/2 of all memory */
-	arc_c_max = allmem / 2;
+	/* How to set default max varies by platform. */
+	arc_c_max = MAX(allmem / 2, arc_c_min);
 
 #ifdef	_KERNEL
-	/* Set min cache to 1/32 of all memory, or 32MB, whichever is more */
-	arc_c_min = MAX(allmem / 32, 2ULL << SPA_MAXBLOCKSHIFT);
+	/*
+     * If zfs_arc_max is non-zero at init, meaning it was set in the kernel
+     * environment before the module was loaded, don't block setting the
+     * maximum because it is less than arc_c_min, instead, reset arc_c_min
+     * to a lower value.
+     * zfs_arc_min will be handled by arc_tuning_update().
+     */
+	if (zfs_arc_max != 0 && zfs_arc_max >= 64 << 20 &&
+	    zfs_arc_max < allmem) {
+		arc_c_max = zfs_arc_max;
+		if (arc_c_min >= arc_c_max) {
+			arc_c_min = MAX(zfs_arc_max / 2,
+			    2ULL << SPA_MAXBLOCKSHIFT);
+		}
+	}
 #else
 	/*
 	 * In userland, there's only the memory pressure that we artificially
