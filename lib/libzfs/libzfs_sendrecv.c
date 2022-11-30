@@ -4801,7 +4801,6 @@ zfs_receive(libzfs_handle_t *hdl, const char *tosnap, nvlist_t *props,
 	char *top_zfs = NULL;
 	int err;
 	int cleanup_fd;
-	uint64_t action_handle = 0;
 	struct stat sb;
 	char *originsnap = NULL;
 
@@ -4856,7 +4855,7 @@ zfs_receive(libzfs_handle_t *hdl, const char *tosnap, nvlist_t *props,
 	VERIFY(cleanup_fd >= 0);
 
 	err = zfs_receive_impl(hdl, tosnap, originsnap, flags, infd, NULL, NULL,
-	    stream_avl, &top_zfs, cleanup_fd, &action_handle, NULL, props);
+	    stream_avl, &top_zfs, cleanup_fd, NULL, NULL, props);
 
 	VERIFY(0 == close(cleanup_fd));
 
