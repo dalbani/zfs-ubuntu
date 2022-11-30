@@ -1109,7 +1109,7 @@ static void arc_hdr_alloc_abd(arc_buf_hdr_t *, boolean_t);
 static void arc_access(arc_buf_hdr_t *, kmutex_t *);
 static boolean_t arc_is_overflowing(void);
 static void arc_buf_watch(arc_buf_t *);
-static void arc_tuning_update(void);
+static void arc_tuning_update(boolean_t);
 static void arc_prune_async(int64_t);
 static uint64_t arc_all_memory(void);
 
@@ -5096,7 +5096,7 @@ arc_adjust_cb_check(void *arg, zthr_t *zthr)
 	 * their actual internal variable counterparts. Without this,
 	 * changing those module params at runtime would have no effect.
 	 */
-	arc_tuning_update();
+	arc_tuning_update(B_FALSE);
 
 	/*
 	 * This is necessary in order to keep the kstat information
@@ -7553,6 +7553,14 @@ arc_state_multilist_index_func(multilist_t *ml, void *obj)
 	    multilist_get_num_sublists(ml));
 }
 
+#define	WARN_IF_TUNING_IGNORED(tuning, value, do_warn) do {	\
+	if ((do_warn) && (tuning) && ((tuning) != (value))) {	\
+		cmn_err(CE_WARN,				\
+		    "ignoring tunable %s (using %llu instead)",	\
+		    (#tuning), (value));			\
+	}							\
+} while (0)
+
 /*
  * Called during module initialization and periodically thereafter to
  * apply reasonable changes to the exposed performance tunings.  Can also be
@@ -7561,10 +7569,19 @@ arc_state_multilist_index_func(multilist_t *ml, void *obj)
  * values will be applied.
  */
 static void
-arc_tuning_update(void)
+arc_tuning_update(boolean_t verbose)
 {
 	uint64_t allmem = arc_all_memory();
 	unsigned long limit;
+
+	/* Valid range: 32M - <arc_c_max> */
+	if ((zfs_arc_min) && (zfs_arc_min != arc_c_min) &&
+	    (zfs_arc_min >= 2ULL << SPA_MAXBLOCKSHIFT) &&
+	    (zfs_arc_min <= arc_c_max)) {
+		arc_c_min = zfs_arc_min;
+		arc_c = MAX(arc_c, arc_c_min);
+	}
+	WARN_IF_TUNING_IGNORED(zfs_arc_min, arc_c_min, verbose);
 
 	/* Valid range: 64M - <all physical memory> */
 	if ((zfs_arc_max) && (zfs_arc_max != arc_c_max) &&
@@ -7578,14 +7595,7 @@ arc_tuning_update(void)
 		if (arc_dnode_limit > arc_meta_limit)
 			arc_dnode_limit = arc_meta_limit;
 	}
-
-	/* Valid range: 32M - <arc_c_max> */
-	if ((zfs_arc_min) && (zfs_arc_min != arc_c_min) &&
-	    (zfs_arc_min >= 2ULL << SPA_MAXBLOCKSHIFT) &&
-	    (zfs_arc_min <= arc_c_max)) {
-		arc_c_min = zfs_arc_min;
-		arc_c = MAX(arc_c, arc_c_min);
-	}
+	WARN_IF_TUNING_IGNORED(zfs_arc_max, arc_c_max, verbose);
 
 	/* Valid range: 16M - <arc_c_max> */
 	if ((zfs_arc_meta_min) && (zfs_arc_meta_min != arc_meta_min) &&
@@ -7597,6 +7607,7 @@ arc_tuning_update(void)
 		if (arc_dnode_limit < arc_meta_min)
 			arc_dnode_limit = arc_meta_min;
 	}
+	WARN_IF_TUNING_IGNORED(zfs_arc_meta_min, arc_meta_min, verbose);
 
 	/* Valid range: <arc_meta_min> - <arc_c_max> */
 	limit = zfs_arc_meta_limit ? zfs_arc_meta_limit :
@@ -7605,6 +7616,7 @@ arc_tuning_update(void)
 	    (limit >= arc_meta_min) &&
 	    (limit <= arc_c_max))
 		arc_meta_limit = limit;
+	WARN_IF_TUNING_IGNORED(zfs_arc_meta_limit, arc_meta_limit, verbose);
 
 	/* Valid range: <arc_meta_min> - <arc_meta_limit> */
 	limit = zfs_arc_dnode_limit ? zfs_arc_dnode_limit :
@@ -7613,6 +7625,8 @@ arc_tuning_update(void)
 	    (limit >= arc_meta_min) &&
 	    (limit <= arc_meta_limit))
 		arc_dnode_limit = limit;
+	WARN_IF_TUNING_IGNORED(zfs_arc_dnode_limit, arc_dnode_limit,
+	    verbose);
 
 	/* Valid range: 1 - N */
 	if (zfs_arc_grow_retry)
@@ -7642,11 +7656,13 @@ arc_tuning_update(void)
 	if ((zfs_arc_lotsfree_percent >= 0) &&
 	    (zfs_arc_lotsfree_percent <= 100))
 		arc_lotsfree_percent = zfs_arc_lotsfree_percent;
+	WARN_IF_TUNING_IGNORED(zfs_arc_lotsfree_percent, arc_lotsfree_percent,
+	    verbose);
 
 	/* Valid range: 0 - <all physical memory> */
 	if ((zfs_arc_sys_free) && (zfs_arc_sys_free != arc_sys_free))
 		arc_sys_free = MIN(MAX(zfs_arc_sys_free, 0), allmem);
-
+	WARN_IF_TUNING_IGNORED(zfs_arc_sys_free, arc_sys_free, verbose);
 }
 
 static void
@@ -7845,7 +7861,7 @@ arc_init(void)
 	arc_dnode_limit = (percent * arc_meta_limit) / 100;
 
 	/* Apply user specified tunings */
-	arc_tuning_update();
+	arc_tuning_update(B_TRUE);
 
 	/* if kmem_flags are set, lets try to use less memory */
 	if (kmem_debugging())
@@ -9401,7 +9417,7 @@ param_set_arc_long(const char *buf, zfs_kernel_param_t *kp)
 	if (error < 0)
 		return (SET_ERROR(error));
 
-	arc_tuning_update();
+	arc_tuning_update(B_TRUE);
 
 	return (0);
 }
@@ -9415,7 +9431,7 @@ param_set_arc_int(const char *buf, zfs_kernel_param_t *kp)
 	if (error < 0)
 		return (SET_ERROR(error));
 
-	arc_tuning_update();
+	arc_tuning_update(B_TRUE);
 
 	return (0);
 }
