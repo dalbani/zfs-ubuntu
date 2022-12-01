@@ -1,3 +1,22 @@
+zfs-linux (2.1.7-1ubuntu1) lunar; urgency=medium
+
+  * Merge from Debian Unstable (LP: #1998487), remaining changes:
+    - debian/control:
+      + drop dependencies on "zfs-modules | zfs-dkms" such that all
+    packages can be installed in containers, on hosts that have zfs module
+    loaded.
+      + change initramfs/dracut packages to only Ubuntu-64bit
+    architectures, zfs is not well supported on 32bit arches
+    - debian/rules:
+      + enforce abi check on Ubuntu amd64
+    - debian/tests/control:
+      + reduce testing to smoketest only
+      + Ubuntu Kernel regression testing covers zfs testsuite
+    - debian/patches:
+      + Apply Ubuntu patchset to integrate with zsys
+
+ -- Andrea Righi <andrea.righi@canonical.com>  Thu, 01 Dec 2022 12:06:06 +0000
+
 zfs-linux (2.1.7-1) unstable; urgency=medium
 
   * New upstream version 2.1.7
