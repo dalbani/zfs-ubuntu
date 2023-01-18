@@ -643,6 +643,7 @@ AC_DEFUN([ZFS_LINUX_COMPILE], [
 		building kernel modules])
 	AC_ARG_VAR([KERNEL_LLVM], [Binary option to
 		build kernel modules with LLVM/CLANG toolchain])
+	KERNEL_CC="${KERNEL_CC:-$CC}"
 	AC_TRY_COMMAND([
 	    KBUILD_MODPOST_NOFINAL="$5" KBUILD_MODPOST_WARN="$6"
 	    make modules -k -j$TEST_JOBS ${KERNEL_CC:+CC=$KERNEL_CC}
