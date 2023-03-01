@@ -1,0 +1,556 @@
+From 158e1b6d59a47b3329dfb820e7208ed22f963dc5 Mon Sep 17 00:00:00 2001
+From: George Wilson <george.wilson@delphix.com>
+Date: Sat, 10 Jul 2021 20:00:37 -0500
+Subject: [PATCH] file reference counts can get corrupted
+
+Callers of zfs_file_get and zfs_file_put can corrupt the reference
+counts for the file structure resulting in a panic or a soft lockup.
+When zfs send/recv runs, it will add a reference count to the
+open file, and begin to send or recv the stream. If the file descriptor
+is closed, then when dmu_recv_stream() or dmu_send() return we will
+call zfs_file_put to remove the reference we placed on the file
+structure. Unfortunately, because zfs_file_put() uses the file
+descriptor to lookup the file structure, it may end up finding that
+the file descriptor table no longer contains the file struct, thus
+leaking the file structure. Or it might end up finding a file
+descriptor for a different file and blindly updating its reference
+counts. Other failure modes probably exists.
+
+This change reworks the zfs_file_[get|put] interface to not rely
+on the file descriptor but instead pass the zfs_file_t pointer around.
+
+Reviewed-by: Matthew Ahrens <mahrens@delphix.com>
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Reviewed-by: Mark Maybee <mark.maybee@delphix.com>
+Reviewed-by: Ryan Moeller <ryan@iXsystems.com>
+Co-authored-by: Allan Jude <allan@klarasystems.com>
+Signed-off-by: George Wilson <gwilson@delphix.com>
+External-issue: DLPX-76119
+Closes #12299
+---
+ include/sys/fm/util.h               |  5 +-
+ include/sys/zfs_file.h              |  6 ++-
+ include/sys/zfs_ioctl.h             |  2 +-
+ include/sys/zfs_onexit.h            |  4 +-
+ lib/libzpool/kernel.c               | 20 ++++----
+ module/os/freebsd/zfs/zfs_file_os.c | 19 +++-----
+ module/os/linux/zfs/zfs_file_os.c   | 28 +++---------
+ module/zfs/fm.c                     | 20 ++++----
+ module/zfs/zfs_ioctl.c              | 71 ++++++++++++++---------------
+ module/zfs/zfs_onexit.c             | 23 ++++++----
+ 10 files changed, 91 insertions(+), 107 deletions(-)
+
+diff --git a/include/sys/fm/util.h b/include/sys/fm/util.h
+index ea8c61a8b..8fa82b7b6 100644
+--- a/include/sys/fm/util.h
++++ b/include/sys/fm/util.h
+@@ -31,6 +31,7 @@ extern "C" {
+ #endif
+ 
+ #include <sys/nvpair.h>
++#include <sys/zfs_file.h>
+ 
+ /*
+  * Shared user/kernel definitions for class length, error channel name,
+@@ -96,8 +97,8 @@ extern void fm_nvprint(nvlist_t *);
+ extern void zfs_zevent_post_cb(nvlist_t *nvl, nvlist_t *detector);
+ extern int zfs_zevent_post(nvlist_t *, nvlist_t *, zevent_cb_t *);
+ extern void zfs_zevent_drain_all(int *);
+-extern int zfs_zevent_fd_hold(int, minor_t *, zfs_zevent_t **);
+-extern void zfs_zevent_fd_rele(int);
++extern zfs_file_t *zfs_zevent_fd_hold(int, minor_t *, zfs_zevent_t **);
++extern void zfs_zevent_fd_rele(zfs_file_t *);
+ extern int zfs_zevent_next(zfs_zevent_t *, nvlist_t **, uint64_t *, uint64_t *);
+ extern int zfs_zevent_wait(zfs_zevent_t *);
+ extern int zfs_zevent_seek(zfs_zevent_t *, uint64_t);
+diff --git a/include/sys/zfs_file.h b/include/sys/zfs_file.h
+index d117933a6..02cd1a6f0 100644
+--- a/include/sys/zfs_file.h
++++ b/include/sys/zfs_file.h
+@@ -22,6 +22,8 @@
+ #ifndef	_SYS_ZFS_FILE_H
+ #define	_SYS_ZFS_FILE_H
+ 
++#include <sys/zfs_context.h>
++
+ #ifndef _KERNEL
+ typedef struct zfs_file {
+ 	int f_fd;
+@@ -55,8 +57,8 @@ int zfs_file_fallocate(zfs_file_t *fp, int mode, loff_t offset, loff_t len);
+ loff_t zfs_file_off(zfs_file_t *fp);
+ int zfs_file_unlink(const char *);
+ 
+-int zfs_file_get(int fd, zfs_file_t **fp);
+-void zfs_file_put(int fd);
++zfs_file_t *zfs_file_get(int fd);
++void zfs_file_put(zfs_file_t *fp);
+ void *zfs_file_private(zfs_file_t *fp);
+ 
+ #endif /* _SYS_ZFS_FILE_H */
+diff --git a/include/sys/zfs_ioctl.h b/include/sys/zfs_ioctl.h
+index 8834c5299..1ca3f211b 100644
+--- a/include/sys/zfs_ioctl.h
++++ b/include/sys/zfs_ioctl.h
+@@ -566,7 +566,7 @@ typedef struct zfsdev_state {
+ } zfsdev_state_t;
+ 
+ extern void *zfsdev_get_state(minor_t minor, enum zfsdev_state_type which);
+-extern int zfsdev_getminor(int fd, minor_t *minorp);
++extern int zfsdev_getminor(zfs_file_t *fp, minor_t *minorp);
+ extern minor_t zfsdev_minor_alloc(void);
+ 
+ extern uint_t zfs_fsyncer_key;
+diff --git a/include/sys/zfs_onexit.h b/include/sys/zfs_onexit.h
+index 0fab23ff8..fd3030e3a 100644
+--- a/include/sys/zfs_onexit.h
++++ b/include/sys/zfs_onexit.h
+@@ -51,8 +51,8 @@ extern void zfs_onexit_destroy(zfs_onexit_t *zo);
+ 
+ #endif
+ 
+-extern int zfs_onexit_fd_hold(int fd, minor_t *minorp);
+-extern void zfs_onexit_fd_rele(int fd);
++extern zfs_file_t *zfs_onexit_fd_hold(int fd, minor_t *minorp);
++extern void zfs_onexit_fd_rele(zfs_file_t *);
+ extern int zfs_onexit_add_cb(minor_t minor, void (*func)(void *), void *data,
+     uint64_t *action_handle);
+ 
+diff --git a/lib/libzpool/kernel.c b/lib/libzpool/kernel.c
+index ca3578993..5abeb6779 100644
+--- a/lib/libzpool/kernel.c
++++ b/lib/libzpool/kernel.c
+@@ -966,16 +966,16 @@ kmem_asprintf(const char *fmt, ...)
+ }
+ 
+ /* ARGSUSED */
+-int
++zfs_file_t *
+ zfs_onexit_fd_hold(int fd, minor_t *minorp)
+ {
+ 	*minorp = 0;
+-	return (0);
++	return (NULL);
+ }
+ 
+ /* ARGSUSED */
+ void
+-zfs_onexit_fd_rele(int fd)
++zfs_onexit_fd_rele(zfs_file_t *fp)
+ {
+ }
+ 
+@@ -1385,28 +1385,26 @@ zfs_file_unlink(const char *path)
+  * Get reference to file pointer
+  *
+  * fd - input file descriptor
+- * fpp - pointer to file pointer
+  *
+- * Returns 0 on success EBADF on failure.
++ * Returns pointer to file struct or NULL.
+  * Unsupported in user space.
+  */
+-int
+-zfs_file_get(int fd, zfs_file_t **fpp)
++zfs_file_t *
++zfs_file_get(int fd)
+ {
+ 	abort();
+ 
+-	return (EOPNOTSUPP);
++	return (NULL);
+ }
+-
+ /*
+  * Drop reference to file pointer
+  *
+- * fd - input file descriptor
++ * fp - pointer to file struct
+  *
+  * Unsupported in user space.
+  */
+ void
+-zfs_file_put(int fd)
++zfs_file_put(zfs_file_t *fp)
+ {
+ 	abort();
+ }
+diff --git a/module/os/freebsd/zfs/zfs_file_os.c b/module/os/freebsd/zfs/zfs_file_os.c
+index bfdc4159a..a8c774a4e 100644
+--- a/module/os/freebsd/zfs/zfs_file_os.c
++++ b/module/os/freebsd/zfs/zfs_file_os.c
+@@ -241,28 +241,21 @@ zfs_file_fsync(zfs_file_t *fp, int flags)
+ 	return (zfs_vop_fsync(fp->f_vnode));
+ }
+ 
+-int
+-zfs_file_get(int fd, zfs_file_t **fpp)
++zfs_file_t *
++zfs_file_get(int fd)
+ {
+ 	struct file *fp;
+ 
+ 	if (fget(curthread, fd, &cap_no_rights, &fp))
+-		return (SET_ERROR(EBADF));
++		return (NULL);
+ 
+-	*fpp = fp;
+-	return (0);
++	return (fp);
+ }
+ 
+ void
+-zfs_file_put(int fd)
++zfs_file_put(zfs_file_t *fp)
+ {
+-	struct file *fp;
+-
+-	/* No CAP_ rights required, as we're only releasing. */
+-	if (fget(curthread, fd, &cap_no_rights, &fp) == 0) {
+-		fdrop(fp, curthread);
+-		fdrop(fp, curthread);
+-	}
++	fdrop(fp, curthread);
+ }
+ 
+ loff_t
+diff --git a/module/os/linux/zfs/zfs_file_os.c b/module/os/linux/zfs/zfs_file_os.c
+index 99c6ffc95..fe522d257 100644
+--- a/module/os/linux/zfs/zfs_file_os.c
++++ b/module/os/linux/zfs/zfs_file_os.c
+@@ -405,36 +405,22 @@ zfs_file_unlink(const char *path)
+  * Get reference to file pointer
+  *
+  * fd - input file descriptor
+- * fpp - pointer to file pointer
+  *
+- * Returns 0 on success EBADF on failure.
++ * Returns pointer to file struct or NULL
+  */
+-int
+-zfs_file_get(int fd, zfs_file_t **fpp)
++zfs_file_t *
++zfs_file_get(int fd)
+ {
+-	zfs_file_t *fp;
+-
+-	fp = fget(fd);
+-	if (fp == NULL)
+-		return (EBADF);
+-
+-	*fpp = fp;
+-
+-	return (0);
++	return (fget(fd));
+ }
+ 
+ /*
+  * Drop reference to file pointer
+  *
+- * fd - input file descriptor
++ * fp - input file struct pointer
+  */
+ void
+-zfs_file_put(int fd)
++zfs_file_put(zfs_file_t *fp)
+ {
+-	struct file *fp;
+-
+-	if ((fp = fget(fd)) != NULL) {
+-		fput(fp);
+-		fput(fp);
+-	}
++	fput(fp);
+ }
+diff --git a/module/zfs/fm.c b/module/zfs/fm.c
+index 6ad4f582e..e868798c8 100644
+--- a/module/zfs/fm.c
++++ b/module/zfs/fm.c
+@@ -586,25 +586,29 @@ zfs_zevent_minor_to_state(minor_t minor, zfs_zevent_t **ze)
+ 	return (0);
+ }
+ 
+-int
++zfs_file_t *
+ zfs_zevent_fd_hold(int fd, minor_t *minorp, zfs_zevent_t **ze)
+ {
+-	int error;
++	zfs_file_t *fp = zfs_file_get(fd);
++	if (fp == NULL)
++		return (NULL);
+ 
+-	error = zfsdev_getminor(fd, minorp);
++	int error = zfsdev_getminor(fp, minorp);
+ 	if (error == 0)
+ 		error = zfs_zevent_minor_to_state(*minorp, ze);
+ 
+-	if (error)
+-		zfs_zevent_fd_rele(fd);
++	if (error) {
++		zfs_zevent_fd_rele(fp);
++		fp = NULL;
++	}
+ 
+-	return (error);
++	return (fp);
+ }
+ 
+ void
+-zfs_zevent_fd_rele(int fd)
++zfs_zevent_fd_rele(zfs_file_t *fp)
+ {
+-	zfs_file_put(fd);
++	zfs_file_put(fp);
+ }
+ 
+ /*
+diff --git a/module/zfs/zfs_ioctl.c b/module/zfs/zfs_ioctl.c
+index 9f670d50a..6f629c984 100644
+--- a/module/zfs/zfs_ioctl.c
++++ b/module/zfs/zfs_ioctl.c
+@@ -4834,8 +4834,8 @@ zfs_ioc_recv_impl(char *tofs, char *tosnap, char *origin, nvlist_t *recvprops,
+ 	*errors = fnvlist_alloc();
+ 	off = 0;
+ 
+-	if ((error = zfs_file_get(input_fd, &input_fp)))
+-		return (error);
++	if ((input_fp = zfs_file_get(input_fd)) == NULL)
++		return (SET_ERROR(EBADF));
+ 
+ 	noff = off = zfs_file_off(input_fp);
+ 	error = dmu_recv_begin(tofs, tosnap, begin_record, force,
+@@ -5115,7 +5115,7 @@ zfs_ioc_recv_impl(char *tofs, char *tosnap, char *origin, nvlist_t *recvprops,
+ 		nvlist_free(inheritprops);
+ 	}
+ out:
+-	zfs_file_put(input_fd);
++	zfs_file_put(input_fp);
+ 	nvlist_free(origrecvd);
+ 	nvlist_free(origprops);
+ 
+@@ -5445,8 +5445,8 @@ zfs_ioc_send(zfs_cmd_t *zc)
+ 		zfs_file_t *fp;
+ 		dmu_send_outparams_t out = {0};
+ 
+-		if ((error = zfs_file_get(zc->zc_cookie, &fp)))
+-			return (error);
++		if ((fp = zfs_file_get(zc->zc_cookie)) == NULL)
++			return (SET_ERROR(EBADF));
+ 
+ 		off = zfs_file_off(fp);
+ 		out.dso_outfunc = dump_bytes;
+@@ -5456,7 +5456,7 @@ zfs_ioc_send(zfs_cmd_t *zc)
+ 		    zc->zc_fromobj, embedok, large_block_ok, compressok,
+ 		    rawok, savedok, zc->zc_cookie, &off, &out);
+ 
+-		zfs_file_put(zc->zc_cookie);
++		zfs_file_put(fp);
+ 	}
+ 	return (error);
+ }
+@@ -6020,25 +6020,24 @@ zfs_ioc_tmp_snapshot(zfs_cmd_t *zc)
+ {
+ 	char *snap_name;
+ 	char *hold_name;
+-	int error;
+ 	minor_t minor;
+ 
+-	error = zfs_onexit_fd_hold(zc->zc_cleanup_fd, &minor);
+-	if (error != 0)
+-		return (error);
++	zfs_file_t *fp = zfs_onexit_fd_hold(zc->zc_cleanup_fd, &minor);
++	if (fp == NULL)
++		return (SET_ERROR(EBADF));
+ 
+ 	snap_name = kmem_asprintf("%s-%016llx", zc->zc_value,
+ 	    (u_longlong_t)ddi_get_lbolt64());
+ 	hold_name = kmem_asprintf("%%%s", zc->zc_value);
+ 
+-	error = dsl_dataset_snapshot_tmp(zc->zc_name, snap_name, minor,
++	int error = dsl_dataset_snapshot_tmp(zc->zc_name, snap_name, minor,
+ 	    hold_name);
+ 	if (error == 0)
+ 		(void) strlcpy(zc->zc_value, snap_name,
+ 		    sizeof (zc->zc_value));
+ 	kmem_strfree(snap_name);
+ 	kmem_strfree(hold_name);
+-	zfs_onexit_fd_rele(zc->zc_cleanup_fd);
++	zfs_onexit_fd_rele(fp);
+ 	return (error);
+ }
+ 
+@@ -6058,13 +6057,13 @@ zfs_ioc_diff(zfs_cmd_t *zc)
+ 	offset_t off;
+ 	int error;
+ 
+-	if ((error = zfs_file_get(zc->zc_cookie, &fp)))
+-		return (error);
++	if ((fp = zfs_file_get(zc->zc_cookie)) == NULL)
++		return (SET_ERROR(EBADF));
+ 
+ 	off = zfs_file_off(fp);
+ 	error = dmu_diff(zc->zc_name, zc->zc_value, fp, &off);
+ 
+-	zfs_file_put(zc->zc_cookie);
++	zfs_file_put(fp);
+ 
+ 	return (error);
+ }
+@@ -6100,6 +6099,7 @@ zfs_ioc_hold(const char *pool, nvlist_t *args, nvlist_t *errlist)
+ 	int cleanup_fd = -1;
+ 	int error;
+ 	minor_t minor = 0;
++	zfs_file_t *fp = NULL;
+ 
+ 	holds = fnvlist_lookup_nvlist(args, "holds");
+ 
+@@ -6117,14 +6117,16 @@ zfs_ioc_hold(const char *pool, nvlist_t *args, nvlist_t *errlist)
+ 	}
+ 
+ 	if (nvlist_lookup_int32(args, "cleanup_fd", &cleanup_fd) == 0) {
+-		error = zfs_onexit_fd_hold(cleanup_fd, &minor);
+-		if (error != 0)
+-			return (SET_ERROR(error));
++		fp = zfs_onexit_fd_hold(cleanup_fd, &minor);
++		if (fp == NULL)
++			return (SET_ERROR(EBADF));
+ 	}
+ 
+ 	error = dsl_dataset_user_hold(holds, minor, errlist);
+-	if (minor != 0)
+-		zfs_onexit_fd_rele(cleanup_fd);
++	if (fp != NULL) {
++		ASSERT3U(minor, !=, 0);
++		zfs_onexit_fd_rele(fp);
++	}
+ 	return (SET_ERROR(error));
+ }
+ 
+@@ -6187,9 +6189,9 @@ zfs_ioc_events_next(zfs_cmd_t *zc)
+ 	uint64_t dropped = 0;
+ 	int error;
+ 
+-	error = zfs_zevent_fd_hold(zc->zc_cleanup_fd, &minor, &ze);
+-	if (error != 0)
+-		return (error);
++	zfs_file_t *fp = zfs_zevent_fd_hold(zc->zc_cleanup_fd, &minor, &ze);
++	if (fp == NULL)
++		return (SET_ERROR(EBADF));
+ 
+ 	do {
+ 		error = zfs_zevent_next(ze, &event,
+@@ -6211,7 +6213,7 @@ zfs_ioc_events_next(zfs_cmd_t *zc)
+ 			break;
+ 	} while (1);
+ 
+-	zfs_zevent_fd_rele(zc->zc_cleanup_fd);
++	zfs_zevent_fd_rele(fp);
+ 
+ 	return (error);
+ }
+@@ -6243,12 +6245,12 @@ zfs_ioc_events_seek(zfs_cmd_t *zc)
+ 	minor_t minor;
+ 	int error;
+ 
+-	error = zfs_zevent_fd_hold(zc->zc_cleanup_fd, &minor, &ze);
+-	if (error != 0)
+-		return (error);
++	zfs_file_t *fp = zfs_zevent_fd_hold(zc->zc_cleanup_fd, &minor, &ze);
++	if (fp == NULL)
++		return (SET_ERROR(EBADF));
+ 
+ 	error = zfs_zevent_seek(ze, zc->zc_guid);
+-	zfs_zevent_fd_rele(zc->zc_cleanup_fd);
++	zfs_zevent_fd_rele(fp);
+ 
+ 	return (error);
+ }
+@@ -6432,8 +6434,8 @@ zfs_ioc_send_new(const char *snapname, nvlist_t *innvl, nvlist_t *outnvl)
+ 
+ 	(void) nvlist_lookup_string(innvl, "redactbook", &redactbook);
+ 
+-	if ((error = zfs_file_get(fd, &fp)))
+-		return (error);
++	if ((fp = zfs_file_get(fd)) == NULL)
++		return (SET_ERROR(EBADF));
+ 
+ 	off = zfs_file_off(fp);
+ 
+@@ -6445,7 +6447,7 @@ zfs_ioc_send_new(const char *snapname, nvlist_t *innvl, nvlist_t *outnvl)
+ 	    compressok, rawok, savedok, resumeobj, resumeoff,
+ 	    redactbook, fd, &off, &out);
+ 
+-	zfs_file_put(fd);
++	zfs_file_put(fp);
+ 	return (error);
+ }
+ 
+@@ -7318,17 +7320,12 @@ pool_status_check(const char *name, zfs_ioc_namecheck_t type,
+ }
+ 
+ int
+-zfsdev_getminor(int fd, minor_t *minorp)
++zfsdev_getminor(zfs_file_t *fp, minor_t *minorp)
+ {
+ 	zfsdev_state_t *zs, *fpd;
+-	zfs_file_t *fp;
+-	int rc;
+ 
+ 	ASSERT(!MUTEX_HELD(&zfsdev_state_lock));
+ 
+-	if ((rc = zfs_file_get(fd, &fp)))
+-		return (rc);
+-
+ 	fpd = zfs_file_private(fp);
+ 	if (fpd == NULL)
+ 		return (SET_ERROR(EBADF));
+diff --git a/module/zfs/zfs_onexit.c b/module/zfs/zfs_onexit.c
+index 2a1332e71..7c56dd9c9 100644
+--- a/module/zfs/zfs_onexit.c
++++ b/module/zfs/zfs_onexit.c
+@@ -107,30 +107,33 @@ zfs_onexit_destroy(zfs_onexit_t *zo)
+  * of this function must call zfs_onexit_fd_rele() when they're finished
+  * using the minor number.
+  */
+-int
++zfs_file_t *
+ zfs_onexit_fd_hold(int fd, minor_t *minorp)
+ {
+ 	zfs_onexit_t *zo = NULL;
+-	int error;
+ 
+-	error = zfsdev_getminor(fd, minorp);
++	zfs_file_t *fp = zfs_file_get(fd);
++	if (fp == NULL)
++		return (NULL);
++
++	int error = zfsdev_getminor(fp, minorp);
+ 	if (error) {
+-		zfs_onexit_fd_rele(fd);
+-		return (error);
++		zfs_onexit_fd_rele(fp);
++		return (NULL);
+ 	}
+ 
+ 	zo = zfsdev_get_state(*minorp, ZST_ONEXIT);
+ 	if (zo == NULL) {
+-		zfs_onexit_fd_rele(fd);
+-		return (SET_ERROR(EBADF));
++		zfs_onexit_fd_rele(fp);
++		return (NULL);
+ 	}
+-	return (0);
++	return (fp);
+ }
+ 
+ void
+-zfs_onexit_fd_rele(int fd)
++zfs_onexit_fd_rele(zfs_file_t *fp)
+ {
+-	zfs_file_put(fd);
++	zfs_file_put(fp);
+ }
+ 
+ static int
+-- 
+2.30.2
+

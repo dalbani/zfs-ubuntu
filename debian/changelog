@@ -1,3 +1,9 @@
+zfs-linux (2.0.3-9+deb11u1) bullseye; urgency=medium
+
+  * cherry-pick upstream fixes for stability issues
+
+ -- Aron Xu <aron@debian.org>  Thu, 02 Mar 2023 00:15:02 +0800
+
 zfs-linux (2.0.3-9) unstable; urgency=medium
 
   * Cherry-pick "Remove iov_iter_advance() for iter_write" (Closes: #989373)

@@ -1,0 +1,76 @@
+From 87d93731e7f60f71238ab3820f18ab1ee13c9ea0 Mon Sep 17 00:00:00 2001
+From: George Amanakis <gamanakis@gmail.com>
+Date: Thu, 17 Jun 2021 03:17:42 +0300
+Subject: [PATCH] Avoid deadlock when removing L2ARC devices under I/O
+
+In case we have I/O and try to remove an L2ARC device a deadlock might
+occur. arc_read()->zio_read()->zfs_blkptr_verify() waits for SCL_VDEV
+to be dropped while holding the hash_lock. However, spa_l2cache_load()
+holds SCL_ALL and waits for the hash_lock in l2arc_evict().
+
+Fix this by moving zfs_blkptr_verify() to the top top arc_read() before
+the hash_lock is taken. Verify the block pointer and return a checksum
+error if damaged rather than halting the system, by using
+BLK_VERIFY_LOG instead of BLK_VERIFY_HALT.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Reviewed-by: Mark Maybee <mark.maybee@delphix.com>
+Signed-off-by: George Amanakis <gamanakis@gmail.com>
+Closes #12054
+---
+ module/zfs/arc.c | 17 ++++++-----------
+ module/zfs/zio.c |  3 ---
+ 2 files changed, 6 insertions(+), 14 deletions(-)
+
+diff --git a/module/zfs/arc.c b/module/zfs/arc.c
+index b6b0f8587..e70b37d4b 100644
+--- a/module/zfs/arc.c
++++ b/module/zfs/arc.c
+@@ -5835,6 +5835,12 @@ top:
+ 		 * Embedded BP's have no DVA and require no I/O to "read".
+ 		 * Create an anonymous arc buf to back it.
+ 		 */
++		if (!zfs_blkptr_verify(spa, bp, zio_flags &
++		    ZIO_FLAG_CONFIG_WRITER, BLK_VERIFY_LOG)) {
++			rc = SET_ERROR(ECKSUM);
++			goto out;
++		}
++
+ 		hdr = buf_hash_find(guid, bp, &hash_lock);
+ 	}
+ 
+@@ -6003,17 +6009,6 @@ top:
+ 			goto out;
+ 		}
+ 
+-		/*
+-		 * Gracefully handle a damaged logical block size as a
+-		 * checksum error.
+-		 */
+-		if (lsize > spa_maxblocksize(spa)) {
+-			rc = SET_ERROR(ECKSUM);
+-			if (hash_lock != NULL)
+-				mutex_exit(hash_lock);
+-			goto out;
+-		}
+-
+ 		if (hdr == NULL) {
+ 			/*
+ 			 * This block is not in the cache or it has
+diff --git a/module/zfs/zio.c b/module/zfs/zio.c
+index 05bc2d63a..dfc3c71c1 100644
+--- a/module/zfs/zio.c
++++ b/module/zfs/zio.c
+@@ -1106,9 +1106,6 @@ zio_read(zio_t *pio, spa_t *spa, const blkptr_t *bp,
+ {
+ 	zio_t *zio;
+ 
+-	(void) zfs_blkptr_verify(spa, bp, flags & ZIO_FLAG_CONFIG_WRITER,
+-	    BLK_VERIFY_HALT);
+-
+ 	zio = zio_create(pio, spa, BP_PHYSICAL_BIRTH(bp), bp,
+ 	    data, size, size, done, private,
+ 	    ZIO_TYPE_READ, priority, flags, NULL, 0, zb,
+-- 
+2.30.2
+

@@ -1,0 +1,49 @@
+From b996523d54c4650fdddf941f80643e76359b61b5 Mon Sep 17 00:00:00 2001
+From: Paul Zuchowski <31706010+PaulZ-98@users.noreply.github.com>
+Date: Fri, 16 Apr 2021 14:00:53 -0400
+Subject: [PATCH] Fix crash in zio_done error reporting
+
+Fix NULL pointer dereference when reporting
+checksum error for gang block in zio_done.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Paul Zuchowski <pzuchowski@datto.com>
+Closes #11872
+Closes #11896
+---
+ module/zfs/zio.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/module/zfs/zio.c b/module/zfs/zio.c
+index 052fa7ec3..fa1d3635d 100644
+--- a/module/zfs/zio.c
++++ b/module/zfs/zio.c
+@@ -25,6 +25,7 @@
+  * Copyright (c) 2017, Intel Corporation.
+  * Copyright (c) 2019, Klara Inc.
+  * Copyright (c) 2019, Allan Jude
++ * Copyright (c) 2021, Datto, Inc.
+  */
+ 
+ #include <sys/sysmacros.h>
+@@ -4499,7 +4500,7 @@ zio_done(zio_t *zio)
+ 			uint64_t asize = P2ROUNDUP(psize, align);
+ 			abd_t *adata = zio->io_abd;
+ 
+-			if (asize != psize) {
++			if (adata != NULL && asize != psize) {
+ 				adata = abd_alloc(asize, B_TRUE);
+ 				abd_copy(adata, zio->io_abd, psize);
+ 				abd_zero_off(adata, psize, asize - psize);
+@@ -4510,7 +4511,7 @@ zio_done(zio_t *zio)
+ 			zcr->zcr_finish(zcr, adata);
+ 			zfs_ereport_free_checksum(zcr);
+ 
+-			if (asize != psize)
++			if (adata != NULL && asize != psize)
+ 				abd_free(adata);
+ 		}
+ 	}
+-- 
+2.30.2
+

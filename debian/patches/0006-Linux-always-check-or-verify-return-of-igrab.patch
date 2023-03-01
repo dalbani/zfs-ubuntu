@@ -1,0 +1,88 @@
+From ac6f3321545a0b82b6b84e7fec6cf62e619d824b Mon Sep 17 00:00:00 2001
+From: "Adam D. Moss" <c@yotes.com>
+Date: Tue, 16 Mar 2021 16:33:34 -0700
+Subject: [PATCH] Linux: always check or verify return of igrab()
+
+zhold() wraps igrab() on Linux, and igrab() may fail when the inode
+is in the process of being deleted.  This means zhold() must only be
+called when a reference exists and therefore it cannot be deleted.
+This is the case for all existing consumers so add a VERIFY and a
+comment explaining this requirement.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Adam Moss <c@yotes.com>
+Closes #11704
+---
+ include/os/linux/zfs/sys/zfs_znode_impl.h | 8 +++++++-
+ module/os/linux/zfs/zfs_ctldir.c          | 3 ++-
+ module/os/linux/zfs/zfs_vfsops.c          | 6 +++++-
+ module/os/linux/zfs/zpl_inode.c           | 3 ++-
+ 4 files changed, 16 insertions(+), 4 deletions(-)
+
+diff --git a/include/os/linux/zfs/sys/zfs_znode_impl.h b/include/os/linux/zfs/sys/zfs_znode_impl.h
+index f17b8eb67..79049df69 100644
+--- a/include/os/linux/zfs/sys/zfs_znode_impl.h
++++ b/include/os/linux/zfs/sys/zfs_znode_impl.h
+@@ -73,7 +73,13 @@ extern "C" {
+ #define	zn_has_cached_data(zp)	((zp)->z_is_mapped)
+ #define	zn_rlimit_fsize(zp, uio, td)	(0)
+ 
+-#define	zhold(zp)	igrab(ZTOI((zp)))
++/*
++ * zhold() wraps igrab() on Linux, and igrab() may fail when the
++ * inode is in the process of being deleted.  As zhold() must only be
++ * called when a ref already exists - so the inode cannot be
++ * mid-deletion - we VERIFY() this.
++ */
++#define	zhold(zp)	VERIFY3P(igrab(ZTOI((zp))), !=, NULL)
+ #define	zrele(zp)	iput(ZTOI((zp)))
+ 
+ /* Called on entry to each ZFS inode and vfs operation. */
+diff --git a/module/os/linux/zfs/zfs_ctldir.c b/module/os/linux/zfs/zfs_ctldir.c
+index a1668e46e..d33188f38 100644
+--- a/module/os/linux/zfs/zfs_ctldir.c
++++ b/module/os/linux/zfs/zfs_ctldir.c
+@@ -590,7 +590,8 @@ struct inode *
+ zfsctl_root(znode_t *zp)
+ {
+ 	ASSERT(zfs_has_ctldir(zp));
+-	igrab(ZTOZSB(zp)->z_ctldir);
++	/* Must have an existing ref, so igrab() cannot return NULL */
++	VERIFY3P(igrab(ZTOZSB(zp)->z_ctldir), !=, NULL);
+ 	return (ZTOZSB(zp)->z_ctldir);
+ }
+ 
+diff --git a/module/os/linux/zfs/zfs_vfsops.c b/module/os/linux/zfs/zfs_vfsops.c
+index 165c1218a..44f575d8a 100644
+--- a/module/os/linux/zfs/zfs_vfsops.c
++++ b/module/os/linux/zfs/zfs_vfsops.c
+@@ -1734,7 +1734,11 @@ zfs_vget(struct super_block *sb, struct inode **ipp, fid_t *fidp)
+ 			VERIFY(zfsctl_root_lookup(*ipp, "snapshot", ipp,
+ 			    0, kcred, NULL, NULL) == 0);
+ 		} else {
+-			igrab(*ipp);
++			/*
++			 * Must have an existing ref, so igrab()
++			 * cannot return NULL
++			 */
++			VERIFY3P(igrab(*ipp), !=, NULL);
+ 		}
+ 		ZFS_EXIT(zfsvfs);
+ 		return (0);
+diff --git a/module/os/linux/zfs/zpl_inode.c b/module/os/linux/zfs/zpl_inode.c
+index ab0373ef9..bd1f60516 100644
+--- a/module/os/linux/zfs/zpl_inode.c
++++ b/module/os/linux/zfs/zpl_inode.c
+@@ -639,7 +639,8 @@ zpl_link(struct dentry *old_dentry, struct inode *dir, struct dentry *dentry)
+ 
+ 	crhold(cr);
+ 	ip->i_ctime = current_time(ip);
+-	igrab(ip); /* Use ihold() if available */
++	/* Must have an existing ref, so igrab() cannot return NULL */
++	VERIFY3P(igrab(ip), !=, NULL);
+ 
+ 	cookie = spl_fstrans_mark();
+ 	error = -zfs_link(ITOZ(dir), ITOZ(ip), dname(dentry), cr, 0);
+-- 
+2.30.2
+
