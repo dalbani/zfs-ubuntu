@@ -26,3 +26,12 @@ move-arcstat-1-to-8.patch
 0037-linux-zvol-avoid-heap-allocation-for-zvol_request_sy.patch
 0038-Don-t-bomb-out-when-using-keylocation-file.patch
 0001-Remove-iov_iter_advance-for-iter_write.patch
+0002-Initialize-ZIL-buffers.patch
+0003-Fix-crash-in-zio_done-error-reporting.patch
+0004-Fix-AVX512BW-Fletcher-code-on-AVX512-but-not-BW-mach.patch
+0005-Fix-zfs_get_data-access-to-files-with-wrong-generati.patch
+0006-Linux-always-check-or-verify-return-of-igrab.patch
+0007-Avoid-deadlock-when-removing-L2ARC-devices-under-I-O.patch
+0008-file-reference-counts-can-get-corrupted.patch
+0009-libshare-nfs-don-t-leak-nfs_lock_fd-when-lock-fails.patch
+0010-Fix-plymouth-passphrase-prompt-with-dracut.patch

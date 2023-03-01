@@ -1,0 +1,39 @@
+From 4ebda5d4d32dd641ded589f336de4ac4964b92fb Mon Sep 17 00:00:00 2001
+From: Michal Vasilek <michal@vasilek.cz>
+Date: Sat, 26 Jun 2021 07:43:25 +0200
+Subject: [PATCH] Fix plymouth passphrase prompt with dracut
+
+plymouth --command splits the command on spaces which means
+that zfs-load-key was getting the filesystem name enclosed
+in single quotes (since 13c59bb76) and failing. This commit
+fixes it by piping the password directly to the command
+similar to how it's done in other scripts (initramfs,
+dracut without plymouth).
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Michal Vasilek <michal@vasilek.cz>
+Related-to: #9193
+Related-to: #9202
+Closes #12147
+---
+ contrib/dracut/90zfs/zfs-lib.sh.in | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/contrib/dracut/90zfs/zfs-lib.sh.in b/contrib/dracut/90zfs/zfs-lib.sh.in
+index 10b0b701a..defc0bfc8 100755
+--- a/contrib/dracut/90zfs/zfs-lib.sh.in
++++ b/contrib/dracut/90zfs/zfs-lib.sh.in
+@@ -179,8 +179,8 @@ ask_for_password() {
+         # Prompt for password with plymouth, if installed and running.
+         if plymouth --ping 2>/dev/null; then
+             plymouth ask-for-password \
+-                --prompt "$ply_prompt" --number-of-tries="$ply_tries" \
+-                --command="$ply_cmd"
++                --prompt "$ply_prompt" --number-of-tries="$ply_tries" | \
++                eval "$ply_cmd"
+             ret=$?
+         else
+             if [ "$tty_echo_off" = yes ]; then
+-- 
+2.30.2
+

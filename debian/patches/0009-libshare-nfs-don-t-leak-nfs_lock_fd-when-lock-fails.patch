@@ -1,0 +1,82 @@
+From 501da8d433f3e9a56c1b61b2f2973e0553cd42f7 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=BD=D0=B0=D0=B1?= <nabijaczleweli@nabijaczleweli.xyz>
+Date: Sun, 11 Apr 2021 19:27:43 +0200
+Subject: [PATCH] libshare: nfs: don't leak nfs_lock_fd when lock fails
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Reviewed-by: George Wilson <gwilson@delphix.com>
+Signed-off-by: Ahelenia Ziemiańska <nabijaczleweli@nabijaczleweli.xyz>
+Closes #11886
+---
+ lib/libshare/os/freebsd/nfs.c | 13 +++++++++----
+ lib/libshare/os/linux/nfs.c   | 13 +++++++++----
+ 2 files changed, 18 insertions(+), 8 deletions(-)
+
+diff --git a/lib/libshare/os/freebsd/nfs.c b/lib/libshare/os/freebsd/nfs.c
+index 5951b9eaf..9cd7dfa95 100644
+--- a/lib/libshare/os/freebsd/nfs.c
++++ b/lib/libshare/os/freebsd/nfs.c
+@@ -65,17 +65,22 @@ static int nfs_lock_fd = -1;
+ static int
+ nfs_exports_lock(void)
+ {
++	int err;
++
+ 	nfs_lock_fd = open(ZFS_EXPORTS_LOCK,
+ 	    O_RDWR | O_CREAT, 0600);
+ 	if (nfs_lock_fd == -1) {
++		err = errno;
+ 		fprintf(stderr, "failed to lock %s: %s\n",
+-		    ZFS_EXPORTS_LOCK, strerror(errno));
+-		return (errno);
++		    ZFS_EXPORTS_LOCK, strerror(err));
++		return (err);
+ 	}
+ 	if (flock(nfs_lock_fd, LOCK_EX) != 0) {
++		err = errno;
+ 		fprintf(stderr, "failed to lock %s: %s\n",
+-		    ZFS_EXPORTS_LOCK, strerror(errno));
+-		return (errno);
++		    ZFS_EXPORTS_LOCK, strerror(err));
++		(void) close(nfs_lock_fd);
++		return (err);
+ 	}
+ 	return (0);
+ }
+diff --git a/lib/libshare/os/linux/nfs.c b/lib/libshare/os/linux/nfs.c
+index 1efa321b7..d5b463b4a 100644
+--- a/lib/libshare/os/linux/nfs.c
++++ b/lib/libshare/os/linux/nfs.c
+@@ -65,17 +65,22 @@ static int nfs_lock_fd = -1;
+ static int
+ nfs_exports_lock(void)
+ {
++	int err;
++
+ 	nfs_lock_fd = open(ZFS_EXPORTS_LOCK,
+ 	    O_RDWR | O_CREAT, 0600);
+ 	if (nfs_lock_fd == -1) {
++		err = errno;
+ 		fprintf(stderr, "failed to lock %s: %s\n",
+-		    ZFS_EXPORTS_LOCK, strerror(errno));
+-		return (errno);
++		    ZFS_EXPORTS_LOCK, strerror(err));
++		return (err);
+ 	}
+ 	if (flock(nfs_lock_fd, LOCK_EX) != 0) {
++		err = errno;
+ 		fprintf(stderr, "failed to lock %s: %s\n",
+-		    ZFS_EXPORTS_LOCK, strerror(errno));
+-		return (errno);
++		    ZFS_EXPORTS_LOCK, strerror(err));
++		(void) close(nfs_lock_fd);
++		return (err);
+ 	}
+ 	return (0);
+ }
+-- 
+2.30.2
+

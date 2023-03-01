@@ -1,0 +1,178 @@
+From bfb29284901afacf24269079515163a55a57aebf Mon Sep 17 00:00:00 2001
+From: Chunwei Chen <tuxoko@gmail.com>
+Date: Fri, 19 Mar 2021 22:53:31 -0700
+Subject: [PATCH] Fix zfs_get_data access to files with wrong generation
+
+If TX_WRITE is create on a file, and the file is later deleted and a new
+directory is created on the same object id, it is possible that when
+zil_commit happens, zfs_get_data will be called on the new directory.
+This may result in panic as it tries to do range lock.
+
+This patch fixes this issue by record the generation number during
+zfs_log_write, so zfs_get_data can check if the object is valid.
+
+Reviewed-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Signed-off-by: Chunwei Chen <david.chen@nutanix.com>
+Closes #10593
+Closes #11682
+---
+ cmd/ztest/ztest.c                  |  4 ++--
+ include/sys/zil.h                  |  3 ++-
+ include/sys/zvol_impl.h            |  4 ++--
+ module/os/linux/zfs/zfs_vnops_os.c | 14 +++++++++++++-
+ module/zfs/zfs_log.c               |  5 +++++
+ module/zfs/zil.c                   |  3 ++-
+ module/zfs/zvol.c                  |  3 ++-
+ 7 files changed, 28 insertions(+), 8 deletions(-)
+
+diff --git a/cmd/ztest/ztest.c b/cmd/ztest/ztest.c
+index 484637997..ba22ee8a4 100644
+--- a/cmd/ztest/ztest.c
++++ b/cmd/ztest/ztest.c
+@@ -2163,8 +2163,8 @@ ztest_get_done(zgd_t *zgd, int error)
+ }
+ 
+ static int
+-ztest_get_data(void *arg, lr_write_t *lr, char *buf, struct lwb *lwb,
+-    zio_t *zio)
++ztest_get_data(void *arg, uint64_t arg2, lr_write_t *lr, char *buf,
++    struct lwb *lwb, zio_t *zio)
+ {
+ 	ztest_ds_t *zd = arg;
+ 	objset_t *os = zd->zd_os;
+diff --git a/include/sys/zil.h b/include/sys/zil.h
+index ec89de38d..cefbccb32 100644
+--- a/include/sys/zil.h
++++ b/include/sys/zil.h
+@@ -399,6 +399,7 @@ typedef struct itx {
+ 	void		*itx_callback_data; /* User data for the callback */
+ 	size_t		itx_size;	/* allocated itx structure size */
+ 	uint64_t	itx_oid;	/* object id */
++	uint64_t	itx_gen;	/* gen number for zfs_get_data */
+ 	lr_t		itx_lr;		/* common part of log record */
+ 	/* followed by type-specific part of lr_xx_t and its immediate data */
+ } itx_t;
+@@ -467,7 +468,7 @@ typedef int zil_parse_blk_func_t(zilog_t *zilog, const blkptr_t *bp, void *arg,
+ typedef int zil_parse_lr_func_t(zilog_t *zilog, const lr_t *lr, void *arg,
+     uint64_t txg);
+ typedef int zil_replay_func_t(void *arg1, void *arg2, boolean_t byteswap);
+-typedef int zil_get_data_t(void *arg, lr_write_t *lr, char *dbuf,
++typedef int zil_get_data_t(void *arg, uint64_t arg2, lr_write_t *lr, char *dbuf,
+     struct lwb *lwb, zio_t *zio);
+ 
+ extern int zil_parse(zilog_t *zilog, zil_parse_blk_func_t *parse_blk_func,
+diff --git a/include/sys/zvol_impl.h b/include/sys/zvol_impl.h
+index 5137d2172..89fe59800 100644
+--- a/include/sys/zvol_impl.h
++++ b/include/sys/zvol_impl.h
+@@ -85,8 +85,8 @@ void zvol_log_truncate(zvol_state_t *zv, dmu_tx_t *tx, uint64_t off,
+     uint64_t len, boolean_t sync);
+ void zvol_log_write(zvol_state_t *zv, dmu_tx_t *tx, uint64_t offset,
+     uint64_t size, int sync);
+-int zvol_get_data(void *arg, lr_write_t *lr, char *buf, struct lwb *lwb,
+-    zio_t *zio);
++int zvol_get_data(void *arg, uint64_t arg2, lr_write_t *lr, char *buf,
++    struct lwb *lwb, zio_t *zio);
+ int zvol_init_impl(void);
+ void zvol_fini_impl(void);
+ void zvol_wait_close(zvol_state_t *zv);
+diff --git a/module/os/linux/zfs/zfs_vnops_os.c b/module/os/linux/zfs/zfs_vnops_os.c
+index ce0701763..a48659b28 100644
+--- a/module/os/linux/zfs/zfs_vnops_os.c
++++ b/module/os/linux/zfs/zfs_vnops_os.c
+@@ -521,7 +521,8 @@ static int zil_fault_io = 0;
+  * Get data to generate a TX_WRITE intent log record.
+  */
+ int
+-zfs_get_data(void *arg, lr_write_t *lr, char *buf, struct lwb *lwb, zio_t *zio)
++zfs_get_data(void *arg, uint64_t gen, lr_write_t *lr, char *buf,
++    struct lwb *lwb, zio_t *zio)
+ {
+ 	zfsvfs_t *zfsvfs = arg;
+ 	objset_t *os = zfsvfs->z_os;
+@@ -532,6 +533,7 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, struct lwb *lwb, zio_t *zio)
+ 	dmu_buf_t *db;
+ 	zgd_t *zgd;
+ 	int error = 0;
++	uint64_t zp_gen;
+ 
+ 	ASSERT3P(lwb, !=, NULL);
+ 	ASSERT3P(zio, !=, NULL);
+@@ -550,6 +552,16 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, struct lwb *lwb, zio_t *zio)
+ 		zfs_zrele_async(zp);
+ 		return (SET_ERROR(ENOENT));
+ 	}
++	/* check if generation number matches */
++	if (sa_lookup(zp->z_sa_hdl, SA_ZPL_GEN(zfsvfs), &zp_gen,
++	    sizeof (zp_gen)) != 0) {
++		zfs_zrele_async(zp);
++		return (SET_ERROR(EIO));
++	}
++	if (zp_gen != gen) {
++		zfs_zrele_async(zp);
++		return (SET_ERROR(ENOENT));
++	}
+ 
+ 	zgd = kmem_zalloc(sizeof (zgd_t), KM_SLEEP);
+ 	zgd->zgd_lwb = lwb;
+diff --git a/module/zfs/zfs_log.c b/module/zfs/zfs_log.c
+index 4bb529f78..30d5c4821 100644
+--- a/module/zfs/zfs_log.c
++++ b/module/zfs/zfs_log.c
+@@ -540,6 +540,7 @@ zfs_log_write(zilog_t *zilog, dmu_tx_t *tx, int txtype,
+ 	uint32_t blocksize = zp->z_blksz;
+ 	itx_wr_state_t write_state;
+ 	uintptr_t fsync_cnt;
++	uint64_t gen = 0;
+ 
+ 	if (zil_replaying(zilog, tx) || zp->z_unlinked ||
+ 	    zfs_xattr_owner_unlinked(zp)) {
+@@ -562,6 +563,9 @@ zfs_log_write(zilog_t *zilog, dmu_tx_t *tx, int txtype,
+ 		(void) tsd_set(zfs_fsyncer_key, (void *)(fsync_cnt - 1));
+ 	}
+ 
++	(void) sa_lookup(zp->z_sa_hdl, SA_ZPL_GEN(ZTOZSB(zp)), &gen,
++	    sizeof (gen));
++
+ 	while (resid) {
+ 		itx_t *itx;
+ 		lr_write_t *lr;
+@@ -609,6 +613,7 @@ zfs_log_write(zilog_t *zilog, dmu_tx_t *tx, int txtype,
+ 		BP_ZERO(&lr->lr_blkptr);
+ 
+ 		itx->itx_private = ZTOZSB(zp);
++		itx->itx_gen = gen;
+ 
+ 		if (!(ioflag & (O_SYNC | O_DSYNC)) && (zp->z_sync_cnt == 0) &&
+ 		    (fsync_cnt == 0))
+diff --git a/module/zfs/zil.c b/module/zfs/zil.c
+index 632fef29b..8e620b409 100644
+--- a/module/zfs/zil.c
++++ b/module/zfs/zil.c
+@@ -1744,7 +1744,8 @@ cont:
+ 			 * completed after "lwb_write_zio" completed.
+ 			 */
+ 			error = zilog->zl_get_data(itx->itx_private,
+-			    lrwb, dbuf, lwb, lwb->lwb_write_zio);
++			    itx->itx_gen, lrwb, dbuf, lwb,
++			    lwb->lwb_write_zio);
+ 
+ 			if (error == EIO) {
+ 				txg_wait_synced(zilog->zl_dmu_pool, txg);
+diff --git a/module/zfs/zvol.c b/module/zfs/zvol.c
+index 44f9832ce..b6609363f 100644
+--- a/module/zfs/zvol.c
++++ b/module/zfs/zvol.c
+@@ -673,7 +673,8 @@ zvol_get_done(zgd_t *zgd, int error)
+  * Get data to generate a TX_WRITE intent log record.
+  */
+ int
+-zvol_get_data(void *arg, lr_write_t *lr, char *buf, struct lwb *lwb, zio_t *zio)
++zvol_get_data(void *arg, uint64_t arg2, lr_write_t *lr, char *buf,
++    struct lwb *lwb, zio_t *zio)
+ {
+ 	zvol_state_t *zv = arg;
+ 	uint64_t offset = lr->lr_offset;
+-- 
+2.30.2
+

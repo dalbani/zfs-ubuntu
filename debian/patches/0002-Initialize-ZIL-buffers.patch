@@ -1,0 +1,31 @@
+From e219935f10f6f604a3dafb4727715c3741480fd4 Mon Sep 17 00:00:00 2001
+From: Brian Behlendorf <behlendorf1@llnl.gov>
+Date: Fri, 5 Mar 2021 14:45:13 -0800
+Subject: [PATCH] Initialize ZIL buffers
+
+When populating a ZIL destination buffer ensure it is always
+zeroed before its contents are constructed.
+
+Reviewed-by: Matthew Ahrens <mahrens@delphix.com>
+Reviewed-by: Tom Caputi <caputit1@tcnj.edu>
+Signed-off-by: Brian Behlendorf <behlendorf1@llnl.gov>
+Closes #11687
+---
+ module/os/linux/zfs/zio_crypt.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/module/os/linux/zfs/zio_crypt.c b/module/os/linux/zfs/zio_crypt.c
+index 96dabe55a..e2abc0ae2 100644
+--- a/module/os/linux/zfs/zio_crypt.c
++++ b/module/os/linux/zfs/zio_crypt.c
+@@ -1399,6 +1399,7 @@ zio_crypt_init_uios_zil(boolean_t encrypt, uint8_t *plainbuf,
+ 		nr_src = 1;
+ 		nr_dst = 0;
+ 	}
++	bzero(dst, datalen);
+ 
+ 	/* find the start and end record of the log block */
+ 	zilc = (zil_chain_t *)src;
+-- 
+2.30.2
+
