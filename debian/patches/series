@@ -30,3 +30,4 @@ ubuntu/4751-suppress-types.patch
 0005-initramfs-Make-mountpoint-none-work.patch
 0006-zdb-zero-pad-checksum-output.patch
 0007-zdb-zero-pad-checksum-output-follow-up.patch
+1a951502f0b4200a13f23f0d2f5759ef60188c17.patch
