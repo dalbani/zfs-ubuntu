@@ -1,3 +1,23 @@
+zfs-linux (2.1.11-1ubuntu1) mantic; urgency=medium
+
+  * Merge from Debian Unstable (LP: #2008245), remaining changes:
+    - debian/control:
+      + drop dependencies on "zfs-modules | zfs-dkms" such that all
+    packages can be installed in containers, on hosts that have zfs module
+    loaded.
+      + change initramfs/dracut packages to only Ubuntu-64bit
+    architectures, zfs is not well supported on 32bit arches
+    - debian/rules:
+      + enforce abi check on Ubuntu amd64
+    - debian/tests/control:
+      + reduce testing to smoketest only
+      + Ubuntu Kernel regression testing covers zfs testsuite
+    - debian/patches:
+      + Apply Ubuntu patchset to integrate with zsys
+      + Fixup up renamed & unused patches 
+
+ -- Dimitri John Ledkov <dimitri.ledkov@canonical.com>  Thu, 18 May 2023 15:06:36 +0100
+
 zfs-linux (2.1.11-1) unstable; urgency=medium
 
   [ Mo Zhou ]
@@ -28,6 +48,31 @@ zfs-linux (2.1.9-3) unstable; urgency=medium
   * targeted cherry-pick to fix quality issues
 
  -- Aron Xu <aron@debian.org>  Sat, 25 Mar 2023 23:07:02 +0800
+
+zfs-linux (2.1.9-2ubuntu2) mantic; urgency=medium
+
+  * Cherry-pick upstream fix to address FTBFS with v6.2.8+. LP: #2019450
+
+ -- Dimitri John Ledkov <dimitri.ledkov@canonical.com>  Sat, 13 May 2023 00:49:15 +0100
+
+zfs-linux (2.1.9-2ubuntu1) lunar; urgency=medium
+
+  * Merge from Debian Unstable (LP: #2008245), remaining changes:
+    - debian/control:
+      + drop dependencies on "zfs-modules | zfs-dkms" such that all
+    packages can be installed in containers, on hosts that have zfs module
+    loaded.
+      + change initramfs/dracut packages to only Ubuntu-64bit
+    architectures, zfs is not well supported on 32bit arches
+    - debian/rules:
+      + enforce abi check on Ubuntu amd64
+    - debian/tests/control:
+      + reduce testing to smoketest only
+      + Ubuntu Kernel regression testing covers zfs testsuite
+    - debian/patches:
+      + Apply Ubuntu patchset to integrate with zsys
+
+ -- Andrea Righi <andrea.righi@canonical.com>  Fri, 03 Mar 2023 07:18:14 +0000
 
 zfs-linux (2.1.9-2) unstable; urgency=medium
 
