@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/file_fadvise/modules.order := {   echo /home/xnox/canonical/zfs/build/file_fadvise/file_fadvise.ko; :; } | awk '!x[$$0]++' - > /home/xnox/canonical/zfs/build/file_fadvise/modules.order

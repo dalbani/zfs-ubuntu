@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/proc_ops_struct/proc_ops_struct.mod := printf '%s\n'   proc_ops_struct.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/proc_ops_struct/"$$0) }' > /home/xnox/canonical/zfs/build/proc_ops_struct/proc_ops_struct.mod

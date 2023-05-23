@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/generic_fadvise/generic_fadvise.mod := printf '%s\n'   generic_fadvise.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/generic_fadvise/"$$0) }' > /home/xnox/canonical/zfs/build/generic_fadvise/generic_fadvise.mod

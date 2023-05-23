@@ -1,0 +1,19 @@
+make: Entering directory '/usr/src/linux-headers-5.19.0-42-generic'
+warning: the compiler differs from the one used to build the kernel
+  The kernel was built by: x86_64-linux-gnu-gcc (Ubuntu 11.3.0-1ubuntu1~22.04.1) 11.3.0
+  You are using:           gcc (Ubuntu 11.3.0-1ubuntu1~22.04.1) 11.3.0
+  CC [M]  /home/xnox/canonical/zfs/build/conftest/conftest.o
+  MODPOST /home/xnox/canonical/zfs/build/conftest/Module.symvers
+ERROR: modpost: GPL-incompatible module conftest.ko uses GPL-only symbol 'perf_trace_buf_alloc'
+ERROR: modpost: GPL-incompatible module conftest.ko uses GPL-only symbol 'perf_trace_run_bpf_submit'
+ERROR: modpost: GPL-incompatible module conftest.ko uses GPL-only symbol 'trace_event_buffer_reserve'
+ERROR: modpost: GPL-incompatible module conftest.ko uses GPL-only symbol 'trace_event_buffer_commit'
+ERROR: modpost: GPL-incompatible module conftest.ko uses GPL-only symbol '__trace_trigger_soft_disabled'
+ERROR: modpost: GPL-incompatible module conftest.ko uses GPL-only symbol 'trace_handle_return'
+ERROR: modpost: GPL-incompatible module conftest.ko uses GPL-only symbol 'bpf_trace_run1'
+ERROR: modpost: GPL-incompatible module conftest.ko uses GPL-only symbol 'trace_event_reg'
+ERROR: modpost: GPL-incompatible module conftest.ko uses GPL-only symbol 'trace_event_raw_init'
+make[1]: *** [scripts/Makefile.modpost:128: /home/xnox/canonical/zfs/build/conftest/Module.symvers] Error 1
+make[1]: Target '__modpost' not remade because of errors.
+make: *** [Makefile:1764: modules] Error 2
+make: Leaving directory '/usr/src/linux-headers-5.19.0-42-generic'

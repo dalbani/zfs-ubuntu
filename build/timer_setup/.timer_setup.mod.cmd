@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/timer_setup/timer_setup.mod := printf '%s\n'   timer_setup.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/timer_setup/"$$0) }' > /home/xnox/canonical/zfs/build/timer_setup/timer_setup.mod

@@ -1,3 +1,17 @@
+zfs-linux (2.1.99-0ubuntu1) mantic; urgency=medium
+
+  * Package master snapshot (zfs-2.1.99-1955-gad0a554614)
+  * Adds support for v6.3+ LP: #2018716
+  * Use native packaging without a tarball.
+  * Lots of symbols dropped and changed:
+    - however these are due to fvisibility=hidden
+    - they should be internal-only
+    - and not used externally
+    - thus updating symbols without ABI bumps
+    - fingers-crossed
+
+ -- Dimitri John Ledkov <dimitri.ledkov@canonical.com>  Tue, 23 May 2023 16:00:16 +0100
+
 zfs-linux (2.1.11-1ubuntu1) mantic; urgency=medium
 
   * Merge from Debian Unstable (LP: #2008245), remaining changes:
@@ -14,7 +28,7 @@ zfs-linux (2.1.11-1ubuntu1) mantic; urgency=medium
       + Ubuntu Kernel regression testing covers zfs testsuite
     - debian/patches:
       + Apply Ubuntu patchset to integrate with zsys
-      + Fixup up renamed & unused patches 
+      + Fixup up renamed & unused patches
 
  -- Dimitri John Ledkov <dimitri.ledkov@canonical.com>  Thu, 18 May 2023 15:06:36 +0100
 

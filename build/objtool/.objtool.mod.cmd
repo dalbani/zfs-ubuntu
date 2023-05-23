@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/objtool/objtool.mod := printf '%s\n'   objtool.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/objtool/"$$0) }' > /home/xnox/canonical/zfs/build/objtool/objtool.mod

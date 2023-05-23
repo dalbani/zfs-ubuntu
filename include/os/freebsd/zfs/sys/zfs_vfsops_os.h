@@ -6,7 +6,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -98,7 +98,6 @@ struct zfsvfs {
 	struct zfsctl_root	*z_ctldir;	/* .zfs directory pointer */
 	boolean_t	z_show_ctldir;	/* expose .zfs in the root dir */
 	boolean_t	z_issnap;	/* true if this is a snapshot */
-	boolean_t	z_vscan;	/* virus scan on/off */
 	boolean_t	z_use_fuids;	/* version allows fuids */
 	boolean_t	z_replay;	/* set during ZIL replay */
 	boolean_t	z_use_sa;	/* version allow system attributes */
@@ -129,9 +128,6 @@ struct zfsvfs {
 #define	ZFS_TEARDOWN_DESTROY(zfsvfs)		\
 	rms_destroy(&(zfsvfs)->z_teardown_lock)
 
-#define	ZFS_TEARDOWN_TRY_ENTER_READ(zfsvfs)	\
-	rms_try_rlock(&(zfsvfs)->z_teardown_lock)
-
 #define	ZFS_TEARDOWN_ENTER_READ(zfsvfs, tag)	\
 	rms_rlock(&(zfsvfs)->z_teardown_lock);
 
@@ -161,9 +157,6 @@ struct zfsvfs {
 
 #define	ZFS_TEARDOWN_DESTROY(zfsvfs)		\
 	rrm_destroy(&(zfsvfs)->z_teardown_lock)
-
-#define	ZFS_TEARDOWN_TRY_ENTER_READ(zfsvfs)	\
-	rw_tryenter(&(zfsvfs)->z_teardown_lock, RW_READER)
 
 #define	ZFS_TEARDOWN_ENTER_READ(zfsvfs, tag)	\
 	rrm_enter_read(&(zfsvfs)->z_teardown_lock, tag);

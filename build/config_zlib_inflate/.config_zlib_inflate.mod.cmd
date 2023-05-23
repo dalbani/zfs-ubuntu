@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/config_zlib_inflate/config_zlib_inflate.mod := printf '%s\n'   config_zlib_inflate.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/config_zlib_inflate/"$$0) }' > /home/xnox/canonical/zfs/build/config_zlib_inflate/config_zlib_inflate.mod

@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/file_fallocate/file_fallocate.mod := printf '%s\n'   file_fallocate.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/file_fallocate/"$$0) }' > /home/xnox/canonical/zfs/build/file_fallocate/file_fallocate.mod

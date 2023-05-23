@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/kernel_write/kernel_write.mod := printf '%s\n'   kernel_write.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/kernel_write/"$$0) }' > /home/xnox/canonical/zfs/build/kernel_write/kernel_write.mod

@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/__vmalloc/__vmalloc.mod := printf '%s\n'   __vmalloc.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/__vmalloc/"$$0) }' > /home/xnox/canonical/zfs/build/__vmalloc/__vmalloc.mod

@@ -1,18 +1,18 @@
 Description: explicitly load the ZFS module via systemd service
 Author: Ubuntu developers
 Forward: no need
-Index: zfs/etc/systemd/system/Makefile.am
+Index: zfs/etc/Makefile.am
 ===================================================================
---- zfs.orig/etc/systemd/system/Makefile.am
-+++ zfs/etc/systemd/system/Makefile.am
-@@ -4,6 +4,7 @@ systemdpreset_DATA = \
- 	50-zfs.preset
- 
- systemdunit_DATA = \
-+	zfs-load-module.service \
- 	zfs-zed.service \
- 	zfs-import-cache.service \
- 	zfs-import-scan.service \
+--- zfs.orig/etc/Makefile.am
++++ zfs/etc/Makefile.am
+@@ -55,6 +55,7 @@ systemdunit_DATA = \
+ 	%D%/systemd/system/zfs-import-cache.service \
+ 	%D%/systemd/system/zfs-import-scan.service \
+ 	%D%/systemd/system/zfs-import.target \
++	%D%/systemd/system/zfs-load-module.service \
+ 	%D%/systemd/system/zfs-mount.service \
+ 	%D%/systemd/system/zfs-scrub-monthly@.timer \
+ 	%D%/systemd/system/zfs-scrub-weekly@.timer \
 Index: zfs/etc/systemd/system/zfs-import-cache.service.in
 ===================================================================
 --- zfs.orig/etc/systemd/system/zfs-import-cache.service.in
@@ -63,20 +63,11 @@ Index: zfs/etc/systemd/system/zfs-load-module.service.in
 +[Install]
 +WantedBy=zfs-mount.service
 +WantedBy=zfs.target
-Index: zfs/etc/systemd/system/50-zfs.preset.in
-===================================================================
---- zfs.orig/etc/systemd/system/50-zfs.preset.in
-+++ zfs/etc/systemd/system/50-zfs.preset.in
-@@ -7,3 +7,4 @@ enable zfs-share.service
- enable zfs-zed.service
- enable zfs-volume-wait.service
- enable zfs.target
-+enable zfs-load-module.service
 Index: zfs/contrib/dracut/90zfs/module-setup.sh.in
 ===================================================================
 --- zfs.orig/contrib/dracut/90zfs/module-setup.sh.in
 +++ zfs/contrib/dracut/90zfs/module-setup.sh.in
-@@ -86,7 +86,8 @@ install() {
+@@ -95,7 +95,8 @@ install() {
  
  		for _service in \
  			"zfs-import-scan.service" \
@@ -86,3 +77,15 @@ Index: zfs/contrib/dracut/90zfs/module-setup.sh.in
  			inst_simple "${systemdsystemunitdir}/${_service}"
  			systemctl -q --root "${initdir}" add-wants zfs-import.target "${_service}"
  
+Index: zfs/etc/systemd/system/50-zfs.preset
+===================================================================
+--- zfs.orig/etc/systemd/system/50-zfs.preset
++++ zfs/etc/systemd/system/50-zfs.preset
+@@ -2,6 +2,7 @@
+ enable zfs-import-cache.service
+ disable zfs-import-scan.service
+ enable zfs-import.target
++enable zfs-load-module.service
+ enable zfs-mount.service
+ enable zfs-share.service
+ enable zfs-zed.service

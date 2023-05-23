@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/wait_queue_head_entry/wait_queue_head_entry.mod := printf '%s\n'   wait_queue_head_entry.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/wait_queue_head_entry/"$$0) }' > /home/xnox/canonical/zfs/build/wait_queue_head_entry/wait_queue_head_entry.mod

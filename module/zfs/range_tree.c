@@ -6,7 +6,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -78,7 +78,7 @@
 static inline void
 rs_copy(range_seg_t *src, range_seg_t *dest, range_tree_t *rt)
 {
-	ASSERT3U(rt->rt_type, <=, RANGE_SEG_NUM_TYPES);
+	ASSERT3U(rt->rt_type, <, RANGE_SEG_NUM_TYPES);
 	size_t size = 0;
 	switch (rt->rt_type) {
 	case RANGE_SEG32:
@@ -91,9 +91,9 @@ rs_copy(range_seg_t *src, range_seg_t *dest, range_tree_t *rt)
 		size = sizeof (range_seg_gap_t);
 		break;
 	default:
-		VERIFY(0);
+		__builtin_unreachable();
 	}
-	bcopy(src, dest, size);
+	memcpy(dest, src, size);
 }
 
 void
@@ -369,6 +369,7 @@ range_tree_add_impl(void *arg, uint64_t start, uint64_t size, uint64_t fill)
 		 * invalid as soon as we do any mutating btree operations.
 		 */
 		rs_after = zfs_btree_find(&rt->rt_root, &tmp, &where_after);
+		ASSERT3P(rs_after, !=, NULL);
 		rs_set_start_raw(rs_after, rt, before_start);
 		rs_set_fill(rs_after, rt, after_fill + before_fill + fill);
 		rs = rs_after;
@@ -698,7 +699,7 @@ range_tree_vacate(range_tree_t *rt, range_tree_func_t *func, void *arg)
 		zfs_btree_clear(&rt->rt_root);
 	}
 
-	bzero(rt->rt_histogram, sizeof (rt->rt_histogram));
+	memset(rt->rt_histogram, 0, sizeof (rt->rt_histogram));
 	rt->rt_space = 0;
 }
 

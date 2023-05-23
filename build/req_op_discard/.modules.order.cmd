@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/req_op_discard/modules.order := {   echo /home/xnox/canonical/zfs/build/req_op_discard/req_op_discard.ko; :; } | awk '!x[$$0]++' - > /home/xnox/canonical/zfs/build/req_op_discard/modules.order

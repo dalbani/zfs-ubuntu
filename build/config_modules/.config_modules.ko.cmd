@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/config_modules/config_modules.ko := ld -r -m elf_x86_64 -z noexecstack --build-id=sha1  -T scripts/module.lds -o /home/xnox/canonical/zfs/build/config_modules/config_modules.ko /home/xnox/canonical/zfs/build/config_modules/config_modules.o /home/xnox/canonical/zfs/build/config_modules/config_modules.mod.o;  true

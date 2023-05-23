@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/inode_lock/inode_lock.mod := printf '%s\n'   inode_lock.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/inode_lock/"$$0) }' > /home/xnox/canonical/zfs/build/inode_lock/inode_lock.mod

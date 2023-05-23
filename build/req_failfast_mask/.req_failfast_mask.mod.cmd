@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/req_failfast_mask/req_failfast_mask.mod := printf '%s\n'   req_failfast_mask.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/req_failfast_mask/"$$0) }' > /home/xnox/canonical/zfs/build/req_failfast_mask/req_failfast_mask.mod

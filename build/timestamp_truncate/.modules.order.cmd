@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/timestamp_truncate/modules.order := {   echo /home/xnox/canonical/zfs/build/timestamp_truncate/timestamp_truncate.ko; :; } | awk '!x[$$0]++' - > /home/xnox/canonical/zfs/build/timestamp_truncate/modules.order

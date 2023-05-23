@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/kvmalloc/kvmalloc.mod := printf '%s\n'   kvmalloc.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/kvmalloc/"$$0) }' > /home/xnox/canonical/zfs/build/kvmalloc/kvmalloc.mod
