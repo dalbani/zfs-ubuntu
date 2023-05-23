@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/wait_on_bit/wait_on_bit.mod := printf '%s\n'   wait_on_bit.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/wait_on_bit/"$$0) }' > /home/xnox/canonical/zfs/build/wait_on_bit/wait_on_bit.mod

@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/config_modules/modules.order := {   echo /home/xnox/canonical/zfs/build/config_modules/config_modules.ko; :; } | awk '!x[$$0]++' - > /home/xnox/canonical/zfs/build/config_modules/modules.order

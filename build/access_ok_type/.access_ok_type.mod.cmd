@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/access_ok_type/access_ok_type.mod := printf '%s\n'   access_ok_type.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/access_ok_type/"$$0) }' > /home/xnox/canonical/zfs/build/access_ok_type/access_ok_type.mod

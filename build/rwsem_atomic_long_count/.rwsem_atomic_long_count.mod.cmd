@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/rwsem_atomic_long_count/rwsem_atomic_long_count.mod := printf '%s\n'   rwsem_atomic_long_count.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/rwsem_atomic_long_count/"$$0) }' > /home/xnox/canonical/zfs/build/rwsem_atomic_long_count/rwsem_atomic_long_count.mod

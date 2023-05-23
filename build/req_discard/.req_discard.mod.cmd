@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/req_discard/req_discard.mod := printf '%s\n'   req_discard.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/req_discard/"$$0) }' > /home/xnox/canonical/zfs/build/req_discard/req_discard.mod

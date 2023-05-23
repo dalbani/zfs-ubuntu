@@ -6,7 +6,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -110,7 +110,7 @@ static krwlock_t zfs_snapshot_lock;
  * Control Directory Tunables (.zfs)
  */
 int zfs_expire_snapshot = ZFSCTL_EXPIRE_SNAPSHOT;
-int zfs_admin_snapshot = 0;
+static int zfs_admin_snapshot = 0;
 
 typedef struct {
 	char		*se_name;	/* full snapshot name */
@@ -118,6 +118,7 @@ typedef struct {
 	spa_t		*se_spa;	/* pool spa */
 	uint64_t	se_objsetid;	/* snapshot objset id */
 	struct dentry   *se_root_dentry; /* snapshot root dentry */
+	krwlock_t	se_taskqid_lock;  /* scheduled unmount taskqid lock */
 	taskqid_t	se_taskqid;	/* scheduled unmount taskqid */
 	avl_node_t	se_node_name;	/* zfs_snapshots_by_name link */
 	avl_node_t	se_node_objsetid; /* zfs_snapshots_by_objsetid link */
@@ -144,6 +145,7 @@ zfsctl_snapshot_alloc(const char *full_name, const char *full_path, spa_t *spa,
 	se->se_objsetid = objsetid;
 	se->se_root_dentry = root_dentry;
 	se->se_taskqid = TASKQID_INVALID;
+	rw_init(&se->se_taskqid_lock, NULL, RW_DEFAULT, NULL);
 
 	zfs_refcount_create(&se->se_refcount);
 
@@ -160,6 +162,7 @@ zfsctl_snapshot_free(zfs_snapentry_t *se)
 	zfs_refcount_destroy(&se->se_refcount);
 	kmem_strfree(se->se_name);
 	kmem_strfree(se->se_path);
+	rw_destroy(&se->se_taskqid_lock);
 
 	kmem_free(se, sizeof (zfs_snapentry_t));
 }
@@ -335,7 +338,9 @@ snapentry_expire(void *data)
 		return;
 	}
 
+	rw_enter(&se->se_taskqid_lock, RW_WRITER);
 	se->se_taskqid = TASKQID_INVALID;
+	rw_exit(&se->se_taskqid_lock);
 	(void) zfsctl_snapshot_unmount(se->se_name, MNT_EXPIRE);
 	zfsctl_snapshot_rele(se);
 
@@ -359,8 +364,18 @@ snapentry_expire(void *data)
 static void
 zfsctl_snapshot_unmount_cancel(zfs_snapentry_t *se)
 {
-	if (taskq_cancel_id(system_delay_taskq, se->se_taskqid) == 0) {
-		se->se_taskqid = TASKQID_INVALID;
+	int err = 0;
+	rw_enter(&se->se_taskqid_lock, RW_WRITER);
+	err = taskq_cancel_id(system_delay_taskq, se->se_taskqid);
+	/*
+	 * if we get ENOENT, the taskq couldn't be found to be
+	 * canceled, so we can just mark it as invalid because
+	 * it's already gone. If we got EBUSY, then we already
+	 * blocked until it was gone _anyway_, so we don't care.
+	 */
+	se->se_taskqid = TASKQID_INVALID;
+	rw_exit(&se->se_taskqid_lock);
+	if (err == 0) {
 		zfsctl_snapshot_rele(se);
 	}
 }
@@ -371,14 +386,29 @@ zfsctl_snapshot_unmount_cancel(zfs_snapentry_t *se)
 static void
 zfsctl_snapshot_unmount_delay_impl(zfs_snapentry_t *se, int delay)
 {
-	ASSERT3S(se->se_taskqid, ==, TASKQID_INVALID);
 
 	if (delay <= 0)
 		return;
 
 	zfsctl_snapshot_hold(se);
+	rw_enter(&se->se_taskqid_lock, RW_WRITER);
+	/*
+	 * If this condition happens, we managed to:
+	 * - dispatch once
+	 * - want to dispatch _again_ before it returned
+	 *
+	 * So let's just return - if that task fails at unmounting,
+	 * we'll eventually dispatch again, and if it succeeds,
+	 * no problem.
+	 */
+	if (se->se_taskqid != TASKQID_INVALID) {
+		rw_exit(&se->se_taskqid_lock);
+		zfsctl_snapshot_rele(se);
+		return;
+	}
 	se->se_taskqid = taskq_dispatch_delay(system_delay_taskq,
 	    snapentry_expire, se, TQ_SLEEP, ddi_get_lbolt() + delay * HZ);
+	rw_exit(&se->se_taskqid_lock);
 }
 
 /*
@@ -468,7 +498,9 @@ zfsctl_inode_alloc(zfsvfs_t *zfsvfs, uint64_t id,
 	zp->z_atime_dirty = B_FALSE;
 	zp->z_zn_prefetch = B_FALSE;
 	zp->z_is_sa = B_FALSE;
+#if !defined(HAVE_FILEMAP_RANGE_HAS_PAGE)
 	zp->z_is_mapped = B_FALSE;
+#endif
 	zp->z_is_ctldir = B_TRUE;
 	zp->z_sa_hdl = NULL;
 	zp->z_blksz = 0;
@@ -478,6 +510,8 @@ zfsctl_inode_alloc(zfsvfs_t *zfsvfs, uint64_t id,
 	zp->z_pflags = 0;
 	zp->z_mode = 0;
 	zp->z_sync_cnt = 0;
+	zp->z_sync_writes_cnt = 0;
+	zp->z_async_writes_cnt = 0;
 	ip->i_generation = 0;
 	ip->i_ino = id;
 	ip->i_mode = (S_IFDIR | S_IRWXUGO);
@@ -653,17 +687,19 @@ zfsctl_fid(struct inode *ip, fid_t *fidp)
 	uint64_t	object = zp->z_id;
 	zfid_short_t	*zfid;
 	int		i;
+	int		error;
 
-	ZFS_ENTER(zfsvfs);
+	if ((error = zfs_enter(zfsvfs, FTAG)) != 0)
+		return (error);
 
 	if (zfsctl_is_snapdir(ip)) {
-		ZFS_EXIT(zfsvfs);
+		zfs_exit(zfsvfs, FTAG);
 		return (zfsctl_snapdir_fid(ip, fidp));
 	}
 
 	if (fidp->fid_len < SHORT_FID_LEN) {
 		fidp->fid_len = SHORT_FID_LEN;
-		ZFS_EXIT(zfsvfs);
+		zfs_exit(zfsvfs, FTAG);
 		return (SET_ERROR(ENOSPC));
 	}
 
@@ -678,7 +714,7 @@ zfsctl_fid(struct inode *ip, fid_t *fidp)
 	for (i = 0; i < sizeof (zfid->zf_gen); i++)
 		zfid->zf_gen[i] = 0;
 
-	ZFS_EXIT(zfsvfs);
+	zfs_exit(zfsvfs, FTAG);
 	return (0);
 }
 
@@ -756,7 +792,8 @@ zfsctl_root_lookup(struct inode *dip, const char *name, struct inode **ipp,
 	zfsvfs_t *zfsvfs = ITOZSB(dip);
 	int error = 0;
 
-	ZFS_ENTER(zfsvfs);
+	if ((error = zfs_enter(zfsvfs, FTAG)) != 0)
+		return (error);
 
 	if (strcmp(name, "..") == 0) {
 		*ipp = dip->i_sb->s_root->d_inode;
@@ -773,7 +810,7 @@ zfsctl_root_lookup(struct inode *dip, const char *name, struct inode **ipp,
 	if (*ipp == NULL)
 		error = SET_ERROR(ENOENT);
 
-	ZFS_EXIT(zfsvfs);
+	zfs_exit(zfsvfs, FTAG);
 
 	return (error);
 }
@@ -790,11 +827,12 @@ zfsctl_snapdir_lookup(struct inode *dip, const char *name, struct inode **ipp,
 	uint64_t id;
 	int error;
 
-	ZFS_ENTER(zfsvfs);
+	if ((error = zfs_enter(zfsvfs, FTAG)) != 0)
+		return (error);
 
 	error = dmu_snapshot_lookup(zfsvfs->z_os, name, &id);
 	if (error) {
-		ZFS_EXIT(zfsvfs);
+		zfs_exit(zfsvfs, FTAG);
 		return (error);
 	}
 
@@ -803,7 +841,7 @@ zfsctl_snapdir_lookup(struct inode *dip, const char *name, struct inode **ipp,
 	if (*ipp == NULL)
 		error = SET_ERROR(ENOENT);
 
-	ZFS_EXIT(zfsvfs);
+	zfs_exit(zfsvfs, FTAG);
 
 	return (error);
 }
@@ -824,7 +862,8 @@ zfsctl_snapdir_rename(struct inode *sdip, const char *snm,
 	if (!zfs_admin_snapshot)
 		return (SET_ERROR(EACCES));
 
-	ZFS_ENTER(zfsvfs);
+	if ((error = zfs_enter(zfsvfs, FTAG)) != 0)
+		return (error);
 
 	to = kmem_alloc(ZFS_MAX_DATASET_NAME_LEN, KM_SLEEP);
 	from = kmem_alloc(ZFS_MAX_DATASET_NAME_LEN, KM_SLEEP);
@@ -882,7 +921,7 @@ out:
 	kmem_free(real, ZFS_MAX_DATASET_NAME_LEN);
 	kmem_free(fsname, ZFS_MAX_DATASET_NAME_LEN);
 
-	ZFS_EXIT(zfsvfs);
+	zfs_exit(zfsvfs, FTAG);
 
 	return (error);
 }
@@ -902,7 +941,8 @@ zfsctl_snapdir_remove(struct inode *dip, const char *name, cred_t *cr,
 	if (!zfs_admin_snapshot)
 		return (SET_ERROR(EACCES));
 
-	ZFS_ENTER(zfsvfs);
+	if ((error = zfs_enter(zfsvfs, FTAG)) != 0)
+		return (error);
 
 	snapname = kmem_alloc(ZFS_MAX_DATASET_NAME_LEN, KM_SLEEP);
 	real = kmem_alloc(ZFS_MAX_DATASET_NAME_LEN, KM_SLEEP);
@@ -931,7 +971,7 @@ out:
 	kmem_free(snapname, ZFS_MAX_DATASET_NAME_LEN);
 	kmem_free(real, ZFS_MAX_DATASET_NAME_LEN);
 
-	ZFS_EXIT(zfsvfs);
+	zfs_exit(zfsvfs, FTAG);
 
 	return (error);
 }
@@ -1056,7 +1096,8 @@ zfsctl_snapshot_mount(struct path *path, int flags)
 		return (SET_ERROR(EISDIR));
 
 	zfsvfs = ITOZSB(ip);
-	ZFS_ENTER(zfsvfs);
+	if ((error = zfs_enter(zfsvfs, FTAG)) != 0)
+		return (error);
 
 	full_name = kmem_zalloc(ZFS_MAX_DATASET_NAME_LEN, KM_SLEEP);
 	full_path = kmem_zalloc(MAXPATHLEN, KM_SLEEP);
@@ -1144,7 +1185,7 @@ error:
 	kmem_free(full_name, ZFS_MAX_DATASET_NAME_LEN);
 	kmem_free(full_path, MAXPATHLEN);
 
-	ZFS_EXIT(zfsvfs);
+	zfs_exit(zfsvfs, FTAG);
 
 	return (error);
 }
@@ -1208,10 +1249,11 @@ zfsctl_shares_lookup(struct inode *dip, char *name, struct inode **ipp,
 	znode_t *dzp;
 	int error;
 
-	ZFS_ENTER(zfsvfs);
+	if ((error = zfs_enter(zfsvfs, FTAG)) != 0)
+		return (error);
 
 	if (zfsvfs->z_shares_dir == 0) {
-		ZFS_EXIT(zfsvfs);
+		zfs_exit(zfsvfs, FTAG);
 		return (SET_ERROR(ENOTSUP));
 	}
 
@@ -1220,7 +1262,7 @@ zfsctl_shares_lookup(struct inode *dip, char *name, struct inode **ipp,
 		zrele(dzp);
 	}
 
-	ZFS_EXIT(zfsvfs);
+	zfs_exit(zfsvfs, FTAG);
 
 	return (error);
 }

@@ -6,7 +6,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -34,6 +34,7 @@
 #include <sys/systm.h>
 #include <sys/sysmacros.h>
 #include <sys/resource.h>
+#include <sys/resourcevar.h>
 #include <sys/mntent.h>
 #include <sys/u8_textprep.h>
 #include <sys/dsl_dataset.h>
@@ -153,13 +154,16 @@ zfs_znode_cache_constructor(void *buf, void *arg, int kmflags)
 	zp->z_xattr_cached = NULL;
 	zp->z_xattr_parent = 0;
 	zp->z_vnode = NULL;
+	zp->z_sync_writes_cnt = 0;
+	zp->z_async_writes_cnt = 0;
+
 	return (0);
 }
 
-/*ARGSUSED*/
 static void
 zfs_znode_cache_destructor(void *buf, void *arg)
 {
+	(void) arg;
 	znode_t *zp = buf;
 
 	ASSERT(!POINTER_IS_VALID(zp->z_zfsvfs));
@@ -172,6 +176,9 @@ zfs_znode_cache_destructor(void *buf, void *arg)
 
 	ASSERT3P(zp->z_acl_cached, ==, NULL);
 	ASSERT3P(zp->z_xattr_cached, ==, NULL);
+
+	ASSERT0(atomic_load_32(&zp->z_sync_writes_cnt));
+	ASSERT0(atomic_load_32(&zp->z_async_writes_cnt));
 }
 
 
@@ -182,14 +189,12 @@ static int
 zfs_znode_cache_constructor_smr(void *mem, int size __unused, void *private,
     int flags)
 {
-
 	return (zfs_znode_cache_constructor(mem, private, flags));
 }
 
 static void
 zfs_znode_cache_destructor_smr(void *mem, int size __unused, void *private)
 {
-
 	zfs_znode_cache_destructor(mem, private);
 }
 
@@ -209,7 +214,6 @@ zfs_znode_init(void)
 static znode_t *
 zfs_znode_alloc_kmem(int flags)
 {
-
 	return (uma_zalloc_smr(znode_uma_zone, flags));
 }
 
@@ -238,7 +242,6 @@ zfs_znode_init(void)
 static znode_t *
 zfs_znode_alloc_kmem(int flags)
 {
-
 	return (kmem_cache_alloc(znode_cache, flags));
 }
 
@@ -296,7 +299,7 @@ zfs_create_share_dir(zfsvfs_t *zfsvfs, dmu_tx_t *tx)
 	sharezp->z_is_sa = zfsvfs->z_use_sa;
 
 	VERIFY0(zfs_acl_ids_create(sharezp, IS_ROOT_NODE, &vattr,
-	    kcred, NULL, &acl_ids));
+	    kcred, NULL, &acl_ids, NULL));
 	zfs_mknode(sharezp, &vattr, tx, kcred, IS_ROOT_NODE, &zp, &acl_ids);
 	ASSERT3P(zp, ==, sharezp);
 	POINTER_INVALIDATE(&sharezp->z_zfsvfs);
@@ -384,7 +387,6 @@ void
 zfs_znode_dmu_fini(znode_t *zp)
 {
 	ASSERT(MUTEX_HELD(ZFS_OBJ_MUTEX(zp->z_zfsvfs, zp->z_id)) ||
-	    zp->z_unlinked ||
 	    ZFS_TEARDOWN_INACTIVE_WRITE_HELD(zp->z_zfsvfs));
 
 	sa_handle_destroy(zp->z_sa_hdl);
@@ -447,6 +449,13 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 	zp->z_vnode = vp;
 	vp->v_data = zp;
 
+	/*
+	 * Acquire the vnode lock before any possible interaction with the
+	 * outside world.  Specifically, there is an error path that calls
+	 * zfs_vnode_forget() and the vnode should be exclusively locked.
+	 */
+	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
+
 	ASSERT(!POINTER_IS_VALID(zp->z_zfsvfs));
 
 	zp->z_sa_hdl = NULL;
@@ -457,11 +466,11 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 	zp->z_blksz = blksz;
 	zp->z_seq = 0x7A4653;
 	zp->z_sync_cnt = 0;
+	zp->z_sync_writes_cnt = 0;
+	zp->z_async_writes_cnt = 0;
 #if __FreeBSD_version >= 1300139
 	atomic_store_ptr(&zp->z_cached_symlink, NULL);
 #endif
-
-	vp = ZTOV(zp);
 
 	zfs_znode_sa_init(zfsvfs, zp, db, obj_type, hdl);
 
@@ -532,10 +541,6 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 	zp->z_zfsvfs = zfsvfs;
 	mutex_exit(&zfsvfs->z_znodes_lock);
 
-	/*
-	 * Acquire vnode lock before making it available to the world.
-	 */
-	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
 #if __FreeBSD_version >= 1400077
 	vn_set_state(vp, VSTATE_CONSTRUCTED);
 #endif
@@ -1685,7 +1690,7 @@ zfs_create_fs(objset_t *os, cred_t *cr, nvlist_t *zplprops, dmu_tx_t *tx)
 	while ((elem = nvlist_next_nvpair(zplprops, elem)) != NULL) {
 		/* For the moment we expect all zpl props to be uint64_ts */
 		uint64_t val;
-		char *name;
+		const char *name;
 
 		ASSERT3S(nvpair_type(elem), ==, DATA_TYPE_UINT64);
 		val = fnvpair_value_uint64(elem);
@@ -1704,6 +1709,7 @@ zfs_create_fs(objset_t *os, cred_t *cr, nvlist_t *zplprops, dmu_tx_t *tx)
 	}
 	ASSERT3U(version, !=, 0);
 	error = zap_update(os, moid, ZPL_VERSION_STR, 8, 1, &version, tx);
+	ASSERT0(error);
 
 	/*
 	 * Create zap object used for SA attribute registration
@@ -1772,7 +1778,7 @@ zfs_create_fs(objset_t *os, cred_t *cr, nvlist_t *zplprops, dmu_tx_t *tx)
 
 	rootzp->z_zfsvfs = zfsvfs;
 	VERIFY0(zfs_acl_ids_create(rootzp, IS_ROOT_NODE, &vattr,
-	    cr, NULL, &acl_ids));
+	    cr, NULL, &acl_ids, NULL));
 	zfs_mknode(rootzp, &vattr, tx, cr, IS_ROOT_NODE, &zp, &acl_ids);
 	ASSERT3P(zp, ==, rootzp);
 	error = zap_add(os, moid, ZFS_ROOT_OBJ, 8, 1, &rootzp->z_id, tx);
@@ -1813,7 +1819,7 @@ zfs_sa_setup(objset_t *osp, sa_attr_type_t **sa_table)
 
 static int
 zfs_grab_sa_handle(objset_t *osp, uint64_t obj, sa_handle_t **hdlp,
-    dmu_buf_t **db, void *tag)
+    dmu_buf_t **db, const void *tag)
 {
 	dmu_object_info_t doi;
 	int error;
@@ -1840,7 +1846,7 @@ zfs_grab_sa_handle(objset_t *osp, uint64_t obj, sa_handle_t **hdlp,
 }
 
 static void
-zfs_release_sa_handle(sa_handle_t *hdl, dmu_buf_t *db, void *tag)
+zfs_release_sa_handle(sa_handle_t *hdl, dmu_buf_t *db, const void *tag)
 {
 	sa_handle_destroy(hdl);
 	sa_buf_rele(db, tag);
@@ -1948,7 +1954,6 @@ zfs_obj_to_path_impl(objset_t *osp, uint64_t obj, sa_handle_t *hdl,
 	} else if (error != ENOENT) {
 		return (error);
 	}
-	error = 0;
 
 	for (;;) {
 		uint64_t pobj;
@@ -1984,7 +1989,7 @@ zfs_obj_to_path_impl(objset_t *osp, uint64_t obj, sa_handle_t *hdl,
 		complen = strlen(component);
 		path -= complen;
 		ASSERT3P(path, >=, buf);
-		bcopy(component, path, complen);
+		memcpy(path, component, complen);
 		obj = pobj;
 
 		if (sa_hdl != hdl) {
@@ -2107,5 +2112,30 @@ zfs_znode_parent_and_name(znode_t *zp, znode_t **dzpp, char *buf)
 		return (err);
 	err = zfs_zget(zfsvfs, parent, dzpp);
 	return (err);
+}
+#endif /* _KERNEL */
+
+#ifdef _KERNEL
+int
+zfs_rlimit_fsize(off_t fsize)
+{
+	struct thread *td = curthread;
+	off_t lim;
+
+	if (td == NULL)
+		return (0);
+
+	lim = lim_cur(td, RLIMIT_FSIZE);
+	if (__predict_true((uoff_t)fsize <= lim))
+		return (0);
+
+	/*
+	 * The limit is reached.
+	 */
+	PROC_LOCK(td->td_proc);
+	kern_psignal(td->td_proc, SIGXFSZ);
+	PROC_UNLOCK(td->td_proc);
+
+	return (EFBIG);
 }
 #endif /* _KERNEL */

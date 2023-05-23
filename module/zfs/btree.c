@@ -637,7 +637,6 @@ zfs_btree_insert_into_parent(zfs_btree_t *tree, zfs_btree_hdr_t *old_node,
 	ASSERT3P(old_node->bth_parent, ==, new_node->bth_parent);
 	size_t size = tree->bt_elem_size;
 	zfs_btree_core_t *parent = old_node->bth_parent;
-	zfs_btree_hdr_t *par_hdr = &parent->btc_hdr;
 
 	/*
 	 * If this is the root node we were splitting, we create a new root
@@ -669,6 +668,7 @@ zfs_btree_insert_into_parent(zfs_btree_t *tree, zfs_btree_hdr_t *old_node,
 	 * Since we have the new separator, binary search for where to put
 	 * new_node.
 	 */
+	zfs_btree_hdr_t *par_hdr = &parent->btc_hdr;
 	zfs_btree_index_t idx;
 	ASSERT(zfs_btree_is_core(par_hdr));
 	VERIFY3P(zfs_btree_find_in_buf(tree, parent->btc_elems,

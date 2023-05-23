@@ -6,7 +6,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -61,9 +61,9 @@ typedef struct vdev_cache vdev_cache_t;
 typedef struct vdev_cache_entry vdev_cache_entry_t;
 struct abd;
 
-extern int zfs_vdev_queue_depth_pct;
-extern int zfs_vdev_def_queue_depth;
-extern uint32_t zfs_vdev_async_write_max_active;
+extern uint_t zfs_vdev_queue_depth_pct;
+extern uint_t zfs_vdev_def_queue_depth;
+extern uint_t zfs_vdev_async_write_max_active;
 
 /*
  * Virtual device operations
@@ -277,6 +277,7 @@ struct vdev {
 	kthread_t	*vdev_open_thread; /* thread opening children	*/
 	kthread_t	*vdev_validate_thread; /* thread validating children */
 	uint64_t	vdev_crtxg;	/* txg when top-level was added */
+	uint64_t	vdev_root_zap;
 
 	/*
 	 * Top-level vdev state.
@@ -297,7 +298,9 @@ struct vdev {
 	list_node_t	vdev_state_dirty_node; /* state dirty list	*/
 	uint64_t	vdev_deflate_ratio; /* deflation ratio (x512)	*/
 	uint64_t	vdev_islog;	/* is an intent log device	*/
+	uint64_t	vdev_noalloc;	/* device is passivated?	*/
 	uint64_t	vdev_removing;	/* device is being removed?	*/
+	uint64_t	vdev_failfast;	/* device failfast setting	*/
 	boolean_t	vdev_ishole;	/* is a hole in the namespace	*/
 	uint64_t	vdev_top_zap;
 	vdev_alloc_bias_t vdev_alloc_bias; /* metaslab allocation bias	*/
@@ -327,6 +330,7 @@ struct vdev {
 	list_node_t	vdev_trim_node;
 	kmutex_t	vdev_autotrim_lock;
 	kcondvar_t	vdev_autotrim_cv;
+	kcondvar_t	vdev_autotrim_kick_cv;
 	kthread_t	*vdev_autotrim_thread;
 	/* Protects vdev_trim_thread and vdev_trim_state. */
 	kmutex_t	vdev_trim_lock;
@@ -467,6 +471,14 @@ struct vdev {
 	zfs_ratelimit_t vdev_delay_rl;
 	zfs_ratelimit_t vdev_deadman_rl;
 	zfs_ratelimit_t vdev_checksum_rl;
+
+	/*
+	 * Checksum and IO thresholds for tuning ZED
+	 */
+	uint64_t	vdev_checksum_n;
+	uint64_t	vdev_checksum_t;
+	uint64_t	vdev_io_n;
+	uint64_t	vdev_io_t;
 };
 
 #define	VDEV_PAD_SIZE		(8 << 10)
@@ -523,8 +535,8 @@ typedef struct vdev_boot_envblock {
 			sizeof (zio_eck_t)];
 	zio_eck_t	vbe_zbt;
 } vdev_boot_envblock_t;
-
-CTASSERT_GLOBAL(sizeof (vdev_boot_envblock_t) == VDEV_PAD_SIZE);
+_Static_assert(sizeof (vdev_boot_envblock_t) == VDEV_PAD_SIZE,
+	"vdev_boot_envblock_t wrong size");
 
 typedef struct vdev_label {
 	char		vl_pad1[VDEV_PAD_SIZE];			/*  8K */
@@ -628,8 +640,6 @@ extern uint64_t vdev_get_ndisks(vdev_t *vd);
  * Global variables
  */
 extern int zfs_vdev_standard_sm_blksz;
-/* zdb uses this tunable, so it must be declared here to make lint happy. */
-extern int zfs_vdev_cache_size;
 
 /*
  * Functions from vdev_indirect.c
@@ -650,8 +660,8 @@ uint64_t vdev_best_ashift(uint64_t logical, uint64_t a, uint64_t b);
 /*
  * Vdev ashift optimization tunables
  */
-extern uint64_t zfs_vdev_min_auto_ashift;
-extern uint64_t zfs_vdev_max_auto_ashift;
+extern uint_t zfs_vdev_min_auto_ashift;
+extern uint_t zfs_vdev_max_auto_ashift;
 int param_set_min_auto_ashift(ZFS_MODULE_PARAM_ARGS);
 int param_set_max_auto_ashift(ZFS_MODULE_PARAM_ARGS);
 

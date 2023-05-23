@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/global_node_page_state/modules.order := {   echo /home/xnox/canonical/zfs/build/global_node_page_state/global_node_page_state.ko; :; } | awk '!x[$$0]++' - > /home/xnox/canonical/zfs/build/global_node_page_state/modules.order

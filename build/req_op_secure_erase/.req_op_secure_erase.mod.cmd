@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/req_op_secure_erase/req_op_secure_erase.mod := printf '%s\n'   req_op_secure_erase.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/req_op_secure_erase/"$$0) }' > /home/xnox/canonical/zfs/build/req_op_secure_erase/req_op_secure_erase.mod

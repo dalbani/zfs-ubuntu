@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/req_preflush/req_preflush.mod := printf '%s\n'   req_preflush.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/req_preflush/"$$0) }' > /home/xnox/canonical/zfs/build/req_preflush/req_preflush.mod

@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/config_debug_lock_alloc_license/config_debug_lock_alloc_license.mod := printf '%s\n'   config_debug_lock_alloc_license.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/config_debug_lock_alloc_license/"$$0) }' > /home/xnox/canonical/zfs/build/config_debug_lock_alloc_license/config_debug_lock_alloc_license.mod

@@ -1,4 +1,2 @@
 [suppress_type]
 	name = FILE*
-[suppress_type]
-        name = regex_t

@@ -1,0 +1,152 @@
+make: Entering directory '/usr/src/linux-headers-5.19.0-42-generic'
+warning: the compiler differs from the one used to build the kernel
+  The kernel was built by: x86_64-linux-gnu-gcc (Ubuntu 11.3.0-1ubuntu1~22.04.1) 11.3.0
+  You are using:           gcc (Ubuntu 11.3.0-1ubuntu1~22.04.1) 11.3.0
+  CC [M]  /home/xnox/canonical/zfs/build/objtool/objtool.o
+  CC [M]  /home/xnox/canonical/zfs/build/stack_frame_non_standard/stack_frame_non_standard.o
+  CC [M]  /home/xnox/canonical/zfs/build/global_node_page_state/global_node_page_state.o
+  CC [M]  /home/xnox/canonical/zfs/build/global_zone_page_state/global_zone_page_state.o
+  CC [M]  /home/xnox/canonical/zfs/build/pde_data/pde_data.o
+  CC [M]  /home/xnox/canonical/zfs/build/access_ok_type/access_ok_type.o
+  CC [M]  /home/xnox/canonical/zfs/build/file_fallocate/file_fallocate.o
+  CC [M]  /home/xnox/canonical/zfs/build/falloc_fl_zero_range/falloc_fl_zero_range.o
+/home/xnox/canonical/zfs/build/access_ok_type/access_ok_type.c: In function ‘main’:
+/home/xnox/canonical/zfs/build/access_ok_type/access_ok_type.c:96:76: error: macro "access_ok" passed 3 arguments, but takes just 2
+   96 |                 int error __attribute__((unused)) = access_ok(0, addr, size);
+      |                                                                            ^
+In file included from ./include/linux/uaccess.h:11,
+                 from /home/xnox/canonical/zfs/build/access_ok_type/access_ok_type.c:86:
+./arch/x86/include/asm/uaccess.h:40: note: macro "access_ok" defined here
+   40 | #define access_ok(addr, size)                                   \
+      | 
+/home/xnox/canonical/zfs/build/access_ok_type/access_ok_type.c:96:53: error: ‘access_ok’ undeclared (first use in this function)
+   96 |                 int error __attribute__((unused)) = access_ok(0, addr, size);
+      |                                                     ^~~~~~~~~
+/home/xnox/canonical/zfs/build/access_ok_type/access_ok_type.c:96:53: note: each undeclared identifier is reported only once for each function it appears in
+make[2]: *** [scripts/Makefile.build:257: /home/xnox/canonical/zfs/build/access_ok_type/access_ok_type.o] Error 1
+make[2]: Target '__build' not remade because of errors.
+make[1]: *** [scripts/Makefile.build:474: /home/xnox/canonical/zfs/build/access_ok_type] Error 2
+  CC [M]  /home/xnox/canonical/zfs/build/file_fadvise/file_fadvise.o
+  CC [M]  /home/xnox/canonical/zfs/build/generic_fadvise/generic_fadvise.o
+  CC [M]  /home/xnox/canonical/zfs/build/2args_zlib_deflate_workspacesize/2args_zlib_deflate_workspacesize.o
+  CC [M]  /home/xnox/canonical/zfs/build/rwsem_activity/rwsem_activity.o
+  CC [M]  /home/xnox/canonical/zfs/build/rwsem_atomic_long_count/rwsem_atomic_long_count.o
+  CC [M]  /home/xnox/canonical/zfs/build/sched_rt_header/sched_rt_header.o
+  CC [M]  /home/xnox/canonical/zfs/build/sched_signal_header/sched_signal_header.o
+  CC [M]  /home/xnox/canonical/zfs/build/io_schedule_timeout/io_schedule_timeout.o
+/home/xnox/canonical/zfs/build/rwsem_activity/rwsem_activity.c: In function ‘main’:
+/home/xnox/canonical/zfs/build/rwsem_activity/rwsem_activity.c:94:32: error: ‘struct rw_semaphore’ has no member named ‘activity’
+   94 |                 dummy_semaphore.activity = 0;
+      |                                ^
+make[2]: *** [scripts/Makefile.build:257: /home/xnox/canonical/zfs/build/rwsem_activity/rwsem_activity.o] Error 1
+make[2]: Target '__build' not remade because of errors.
+make[1]: *** [scripts/Makefile.build:474: /home/xnox/canonical/zfs/build/rwsem_activity] Error 2
+  CC [M]  /home/xnox/canonical/zfs/build/usleep_range/usleep_range.o
+  CC [M]  /home/xnox/canonical/zfs/build/kmem_cache_create_usercopy/kmem_cache_create_usercopy.o
+  CC [M]  /home/xnox/canonical/zfs/build/kvmalloc/kvmalloc.o
+  CC [M]  /home/xnox/canonical/zfs/build/__vmalloc/__vmalloc.o
+  CC [M]  /home/xnox/canonical/zfs/build/wait_on_bit/wait_on_bit.o
+  CC [M]  /home/xnox/canonical/zfs/build/wait_queue_head_entry/wait_queue_head_entry.o
+  CC [M]  /home/xnox/canonical/zfs/build/timestamp_truncate/timestamp_truncate.o
+  CC [M]  /home/xnox/canonical/zfs/build/inode_times/inode_times.o
+  CC [M]  /home/xnox/canonical/zfs/build/inode_lock/inode_lock.o
+/home/xnox/canonical/zfs/build/wait_on_bit/wait_on_bit.c: In function ‘main’:
+/home/xnox/canonical/zfs/build/wait_on_bit/wait_on_bit.c:94:17: error: implicit declaration of function ‘wait_on_bit’ [-Werror=implicit-function-declaration]
+   94 |                 wait_on_bit(NULL, 0, action, 0);
+      |                 ^~~~~~~~~~~
+  CC [M]  /home/xnox/canonical/zfs/build/group_info_gid/group_info_gid.o
+cc1: all warnings being treated as errors
+make[2]: *** [scripts/Makefile.build:257: /home/xnox/canonical/zfs/build/wait_on_bit/wait_on_bit.o] Error 1
+make[2]: Target '__build' not remade because of errors.
+make[1]: *** [scripts/Makefile.build:474: /home/xnox/canonical/zfs/build/wait_on_bit] Error 2
+  CC [M]  /home/xnox/canonical/zfs/build/kernel_write/kernel_write.o
+/home/xnox/canonical/zfs/build/__vmalloc/__vmalloc.c: In function ‘main’:
+/home/xnox/canonical/zfs/build/__vmalloc/__vmalloc.c:96:21: error: too many arguments to function ‘__vmalloc’
+   96 |                 p = __vmalloc(0, GFP_KERNEL, PAGE_KERNEL);
+      |                     ^~~~~~~~~
+In file included from /home/xnox/canonical/zfs/build/__vmalloc/__vmalloc.c:87:
+./include/linux/vmalloc.h:149:14: note: declared here
+  149 | extern void *__vmalloc(unsigned long size, gfp_t gfp_mask) __alloc_size(1);
+      |              ^~~~~~~~~
+make[2]: *** [scripts/Makefile.build:257: /home/xnox/canonical/zfs/build/__vmalloc/__vmalloc.o] Error 1
+make[2]: Target '__build' not remade because of errors.
+make[1]: *** [scripts/Makefile.build:474: /home/xnox/canonical/zfs/build/__vmalloc] Error 2
+  CC [M]  /home/xnox/canonical/zfs/build/kernel_read/kernel_read.o
+/home/xnox/canonical/zfs/build/inode_times/inode_times.c: In function ‘main’:
+/home/xnox/canonical/zfs/build/inode_times/inode_times.c:94:33: error: storage size of ‘ts’ isn’t known
+   94 |                 struct timespec ts;
+      |                                 ^~
+/home/xnox/canonical/zfs/build/inode_times/inode_times.c:94:33: error: unused variable ‘ts’ [-Werror=unused-variable]
+cc1: all warnings being treated as errors
+make[2]: *** [scripts/Makefile.build:257: /home/xnox/canonical/zfs/build/inode_times/inode_times.o] Error 1
+make[2]: Target '__build' not remade because of errors.
+make[1]: *** [scripts/Makefile.build:474: /home/xnox/canonical/zfs/build/inode_times] Error 2
+  CC [M]  /home/xnox/canonical/zfs/build/timer_list_function/timer_list_function.o
+  CC [M]  /home/xnox/canonical/zfs/build/timer_setup/timer_setup.o
+  CC [M]  /home/xnox/canonical/zfs/build/timer_list_flags/timer_list_flags.o
+  CC [M]  /home/xnox/canonical/zfs/build/super_user_ns/super_user_ns.o
+  CC [M]  /home/xnox/canonical/zfs/build/proc_ops_struct/proc_ops_struct.o
+  CC [M]  /home/xnox/canonical/zfs/build/block_device_operations_check_events/block_device_operations_check_events.o
+  CC [M]  /home/xnox/canonical/zfs/build/block_device_operations_release_void/block_device_operations_release_void.o
+  CC [M]  /home/xnox/canonical/zfs/build/block_device_operations_revalidate_disk/block_device_operations_revalidate_disk.o
+  CC [M]  /home/xnox/canonical/zfs/build/req_failfast_mask/req_failfast_mask.o
+  CC [M]  /home/xnox/canonical/zfs/build/req_discard/req_discard.o
+  CC [M]  /home/xnox/canonical/zfs/build/req_flush/req_flush.o
+  CC [M]  /home/xnox/canonical/zfs/build/req_preflush/req_preflush.o
+  CC [M]  /home/xnox/canonical/zfs/build/req_op_discard/req_op_discard.o
+/home/xnox/canonical/zfs/build/block_device_operations_revalidate_disk/block_device_operations_revalidate_disk.c:95:26: error: ‘const struct block_device_operations’ has no member named ‘revalidate_disk’
+   95 |                         .revalidate_disk        = blk_revalidate_disk,
+      |                          ^~~~~~~~~~~~~~~
+/home/xnox/canonical/zfs/build/block_device_operations_revalidate_disk/block_device_operations_revalidate_disk.c:95:51: error: initialization of ‘void (*)(struct bio *)’ from incompatible pointer type ‘int (*)(struct gendisk *)’ [-Werror=incompatible-pointer-types]
+   95 |                         .revalidate_disk        = blk_revalidate_disk,
+      |                                                   ^~~~~~~~~~~~~~~~~~~
+/home/xnox/canonical/zfs/build/block_device_operations_revalidate_disk/block_device_operations_revalidate_disk.c:95:51: note: (near initialization for ‘bops.submit_bio’)
+cc1: all warnings being treated as errors
+make[2]: *** [scripts/Makefile.build:257: /home/xnox/canonical/zfs/build/block_device_operations_revalidate_disk/block_device_operations_revalidate_disk.o] Error 1
+make[2]: Target '__build' not remade because of errors.
+make[1]: *** [scripts/Makefile.build:474: /home/xnox/canonical/zfs/build/block_device_operations_revalidate_disk] Error 2
+  CC [M]  /home/xnox/canonical/zfs/build/req_op_secure_erase/req_op_secure_erase.o
+  CC [M]  /home/xnox/canonical/zfs/build/req_op_flush/req_op_flush.o
+/home/xnox/canonical/zfs/build/req_discard/req_discard.c: In function ‘main’:
+/home/xnox/canonical/zfs/build/req_discard/req_discard.c:94:25: error: ‘REQ_DISCARD’ undeclared (first use in this function); did you mean ‘ITER_DISCARD’?
+   94 |                 flags = REQ_DISCARD;
+      |                         ^~~~~~~~~~~
+      |                         ITER_DISCARD
+/home/xnox/canonical/zfs/build/req_discard/req_discard.c:94:25: note: each undeclared identifier is reported only once for each function it appears in
+make[2]: *** [scripts/Makefile.build:257: /home/xnox/canonical/zfs/build/req_discard/req_discard.o] Error 1
+make[2]: Target '__build' not remade because of errors.
+make[1]: *** [scripts/Makefile.build:474: /home/xnox/canonical/zfs/build/req_discard] Error 2
+/home/xnox/canonical/zfs/build/req_flush/req_flush.c: In function ‘main’:
+/home/xnox/canonical/zfs/build/req_flush/req_flush.c:94:25: error: ‘REQ_FLUSH’ undeclared (first use in this function); did you mean ‘REQ_OP_FLUSH’?
+   94 |                 flags = REQ_FLUSH;
+      |                         ^~~~~~~~~
+      |                         REQ_OP_FLUSH
+/home/xnox/canonical/zfs/build/req_flush/req_flush.c:94:25: note: each undeclared identifier is reported only once for each function it appears in
+make[2]: *** [scripts/Makefile.build:257: /home/xnox/canonical/zfs/build/req_flush/req_flush.o] Error 1
+make[2]: Target '__build' not remade because of errors.
+  CC [M]  /home/xnox/canonical/zfs/build/bio_bi_opf/bio_bi_opf.o
+make[1]: *** [scripts/Makefile.build:474: /home/xnox/canonical/zfs/build/req_flush] Error 2
+  CC [M]  /home/xnox/canonical/zfs/build/bio_set_op_attrs/bio_set_op_attrs.o
+  CC [M]  /home/xnox/canonical/zfs/build/bio_set_dev/bio_set_dev.o
+  CC [M]  /home/xnox/canonical/zfs/build/bio_set_dev_license/bio_set_dev_license.o
+  CC [M]  /home/xnox/canonical/zfs/build/bio_end_io_t_args/bio_end_io_t_args.o
+  CC [M]  /home/xnox/canonical/zfs/build/bio_bi_status/bio_bi_status.o
+make[2]: *** Deleting file '/home/xnox/canonical/zfs/build/req_op_secure_erase/req_op_secure_erase.o'
+make[2]: *** Deleting file '/home/xnox/canonical/zfs/build/req_op_flush/req_op_flush.o'
+make[2]: *** [scripts/Makefile.build:257: /home/xnox/canonical/zfs/build/bio_bi_opf/bio_bi_opf.o] Interrupt
+make[2]: *** [scripts/Makefile.build:257: /home/xnox/canonical/zfs/build/bio_bi_status/bio_bi_status.o] Interrupt
+make[1]: *** [scripts/Makefile.build:474: /home/xnox/canonical/zfs/build/bio_bi_opf] Interrupt
+make[1]: *** [scripts/Makefile.build:474: /home/xnox/canonical/zfs/build/bio_bi_status] Interrupt
+make[2]: *** [scripts/Makefile.build:257: /home/xnox/canonical/zfs/build/bio_end_io_t_args/bio_end_io_t_args.o] Interrupt
+make[2]: *** [scripts/Makefile.build:257: /home/xnox/canonical/zfs/build/req_op_flush/req_op_flush.o] Interrupt
+make[2]: *** [scripts/Makefile.build:257: /home/xnox/canonical/zfs/build/bio_set_dev/bio_set_dev.o] Interrupt
+make[1]: *** [scripts/Makefile.build:474: /home/xnox/canonical/zfs/build/req_op_flush] Interrupt
+make[1]: *** [scripts/Makefile.build:474: /home/xnox/canonical/zfs/build/bio_end_io_t_args] Interrupt
+make[2]: *** [scripts/Makefile.build:257: /home/xnox/canonical/zfs/build/req_op_secure_erase/req_op_secure_erase.o] Interrupt
+make[1]: *** [scripts/Makefile.build:474: /home/xnox/canonical/zfs/build/bio_set_dev] Interrupt
+make[2]: *** [scripts/Makefile.build:257: /home/xnox/canonical/zfs/build/bio_set_op_attrs/bio_set_op_attrs.o] Interrupt
+make[1]: *** [scripts/Makefile.build:474: /home/xnox/canonical/zfs/build/req_op_secure_erase] Interrupt
+make[1]: *** [scripts/Makefile.build:474: /home/xnox/canonical/zfs/build/bio_set_op_attrs] Interrupt
+make[2]: *** [scripts/Makefile.build:257: /home/xnox/canonical/zfs/build/bio_set_dev_license/bio_set_dev_license.o] Interrupt
+make[1]: *** [scripts/Makefile.build:474: /home/xnox/canonical/zfs/build/bio_set_dev_license] Interrupt
+make: *** [Makefile:1850: /home/xnox/canonical/zfs/build] Interrupt

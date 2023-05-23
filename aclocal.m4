@@ -938,6 +938,7 @@ AC_DEFUN([AM_PATH_PYTHON],
   dnl supported. (2.0 was released on October 16, 2000).
   m4_define_default([_AM_PYTHON_INTERPRETER_LIST],
 [python python2 python3 dnl
+ python3.11 python3.10 dnl
  python3.9 python3.8 python3.7 python3.6 python3.5 python3.4 python3.3 dnl
  python3.2 python3.1 python3.0 dnl
  python2.7 python2.6 python2.5 python2.4 python2.3 python2.2 python2.1 dnl
@@ -1154,7 +1155,14 @@ except ImportError:
    am_cv_python_pythondir=`$PYTHON -c "
 $am_python_setup_sysconfig
 if can_use_sysconfig:
-  sitedir = sysconfig.get_path('purelib', vars={'base':'$am_py_prefix'})
+  if hasattr(sysconfig, 'get_default_scheme'):
+    scheme = sysconfig.get_default_scheme()
+  else:
+    scheme = sysconfig._get_default_scheme()
+  if scheme == 'posix_local':
+    # Debian's default scheme installs to /usr/local/ but we want to find headers in /usr/
+    scheme = 'posix_prefix'
+  sitedir = sysconfig.get_path('purelib', scheme, vars={'base':'$am_py_prefix'})
 else:
   from distutils import sysconfig
   sitedir = sysconfig.get_python_lib(0, 0, prefix='$am_py_prefix')
@@ -1196,7 +1204,14 @@ sys.stdout.write(sitedir)"`
    am_cv_python_pyexecdir=`$PYTHON -c "
 $am_python_setup_sysconfig
 if can_use_sysconfig:
-  sitedir = sysconfig.get_path('platlib', vars={'platbase':'$am_py_exec_prefix'})
+  if hasattr(sysconfig, 'get_default_scheme'):
+    scheme = sysconfig.get_default_scheme()
+  else:
+    scheme = sysconfig._get_default_scheme()
+  if scheme == 'posix_local':
+    # Debian's default scheme installs to /usr/local/ but we want to find headers in /usr/
+    scheme = 'posix_prefix'
+  sitedir = sysconfig.get_path('platlib', scheme, vars={'platbase':'$am_py_exec_prefix'})
 else:
   from distutils import sysconfig
   sitedir = sysconfig.get_python_lib(1, 0, prefix='$am_py_exec_prefix')
@@ -1599,6 +1614,7 @@ m4_include([config/ax_count_cpus.m4])
 m4_include([config/ax_python_devel.m4])
 m4_include([config/ax_restore_flags.m4])
 m4_include([config/ax_save_flags.m4])
+m4_include([config/dkms.m4])
 m4_include([config/find_system_library.m4])
 m4_include([config/gettext.m4])
 m4_include([config/host-cpu-c-abi.m4])
@@ -1619,6 +1635,7 @@ m4_include([config/kernel-clear-inode.m4])
 m4_include([config/kernel-commit-metadata.m4])
 m4_include([config/kernel-config-defined.m4])
 m4_include([config/kernel-copy-from-user-inatomic.m4])
+m4_include([config/kernel-cpu_has_feature.m4])
 m4_include([config/kernel-current-time.m4])
 m4_include([config/kernel-declare-event-class.m4])
 m4_include([config/kernel-dentry-alias.m4])
@@ -1627,14 +1644,18 @@ m4_include([config/kernel-dirty-inode.m4])
 m4_include([config/kernel-discard-granularity.m4])
 m4_include([config/kernel-encode-fh-inode.m4])
 m4_include([config/kernel-evict-inode.m4])
+m4_include([config/kernel-fadvise.m4])
 m4_include([config/kernel-fallocate.m4])
 m4_include([config/kernel-file-dentry.m4])
 m4_include([config/kernel-file-inode.m4])
+m4_include([config/kernel-filemap.m4])
+m4_include([config/kernel-flush_dcache_page.m4])
 m4_include([config/kernel-fmode-t.m4])
 m4_include([config/kernel-follow-down-one.m4])
 m4_include([config/kernel-fpu.m4])
 m4_include([config/kernel-fst-mount.m4])
 m4_include([config/kernel-fsync.m4])
+m4_include([config/kernel-generic_fadvise.m4])
 m4_include([config/kernel-generic_fillattr.m4])
 m4_include([config/kernel-generic_io_acct.m4])
 m4_include([config/kernel-generic_readlink.m4])
@@ -1644,13 +1665,17 @@ m4_include([config/kernel-get-link.m4])
 m4_include([config/kernel-global_page_state.m4])
 m4_include([config/kernel-group-info.m4])
 m4_include([config/kernel-hotplug.m4])
+m4_include([config/kernel-iattr-vfsid.m4])
+m4_include([config/kernel-idmap_mnt_api.m4])
 m4_include([config/kernel-in-compat-syscall.m4])
 m4_include([config/kernel-inode-create.m4])
 m4_include([config/kernel-inode-getattr.m4])
 m4_include([config/kernel-inode-lock.m4])
 m4_include([config/kernel-inode-lookup.m4])
+m4_include([config/kernel-inode-permission.m4])
 m4_include([config/kernel-inode-set-flags.m4])
 m4_include([config/kernel-inode-set-iversion.m4])
+m4_include([config/kernel-inode-setattr.m4])
 m4_include([config/kernel-inode-times.m4])
 m4_include([config/kernel-insert-inode-locked.m4])
 m4_include([config/kernel-is_owner_or_cap.m4])
@@ -1697,6 +1722,7 @@ m4_include([config/kernel-tmpfile.m4])
 m4_include([config/kernel-totalhigh_pages.m4])
 m4_include([config/kernel-totalram-pages-func.m4])
 m4_include([config/kernel-truncate-setsize.m4])
+m4_include([config/kernel-user-ns-inum.m4])
 m4_include([config/kernel-userns-capabilities.m4])
 m4_include([config/kernel-usleep_range.m4])
 m4_include([config/kernel-vfs-direct_IO.m4])
@@ -1709,6 +1735,7 @@ m4_include([config/kernel-vfs-read_folio.m4])
 m4_include([config/kernel-vfs-rw-iterate.m4])
 m4_include([config/kernel-vfs-set_page_dirty.m4])
 m4_include([config/kernel-wait.m4])
+m4_include([config/kernel-writepage_t.m4])
 m4_include([config/kernel-xattr-handler.m4])
 m4_include([config/kernel-zero_page.m4])
 m4_include([config/kernel-zlib.m4])
@@ -1727,6 +1754,7 @@ m4_include([config/pkg.m4])
 m4_include([config/po.m4])
 m4_include([config/progtest.m4])
 m4_include([config/toolchain-simd.m4])
+m4_include([config/user-aio.h.m4])
 m4_include([config/user-clock_gettime.m4])
 m4_include([config/user-dracut.m4])
 m4_include([config/user-gettext.m4])

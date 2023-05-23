@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/req_preflush/modules.order := {   echo /home/xnox/canonical/zfs/build/req_preflush/req_preflush.ko; :; } | awk '!x[$$0]++' - > /home/xnox/canonical/zfs/build/req_preflush/modules.order

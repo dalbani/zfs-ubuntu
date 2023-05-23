@@ -6,7 +6,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -80,7 +80,7 @@ unsigned int zfs_object_mutex_size = ZFS_OBJ_MTX_SZ;
  * This is used by the test suite so that it can delay znodes from being
  * freed in order to inspect the unlinked set.
  */
-int zfs_unlink_suspend_progress = 0;
+static int zfs_unlink_suspend_progress = 0;
 
 /*
  * This callback is invoked when acquiring a RL_WRITER or RL_APPEND lock on
@@ -113,10 +113,10 @@ zfs_rangelock_cb(zfs_locked_range_t *new, void *arg)
 	}
 }
 
-/*ARGSUSED*/
 static int
 zfs_znode_cache_constructor(void *buf, void *arg, int kmflags)
 {
+	(void) arg, (void) kmflags;
 	znode_t *zp = buf;
 
 	inode_init_once(ZTOI(zp));
@@ -134,13 +134,16 @@ zfs_znode_cache_constructor(void *buf, void *arg, int kmflags)
 	zp->z_acl_cached = NULL;
 	zp->z_xattr_cached = NULL;
 	zp->z_xattr_parent = 0;
+	zp->z_sync_writes_cnt = 0;
+	zp->z_async_writes_cnt = 0;
+
 	return (0);
 }
 
-/*ARGSUSED*/
 static void
 zfs_znode_cache_destructor(void *buf, void *arg)
 {
+	(void) arg;
 	znode_t *zp = buf;
 
 	ASSERT(!list_link_active(&zp->z_link_node));
@@ -151,14 +154,18 @@ zfs_znode_cache_destructor(void *buf, void *arg)
 	rw_destroy(&zp->z_xattr_lock);
 	zfs_rangelock_fini(&zp->z_rangelock);
 
-	ASSERT(zp->z_dirlocks == NULL);
-	ASSERT(zp->z_acl_cached == NULL);
-	ASSERT(zp->z_xattr_cached == NULL);
+	ASSERT3P(zp->z_dirlocks, ==, NULL);
+	ASSERT3P(zp->z_acl_cached, ==, NULL);
+	ASSERT3P(zp->z_xattr_cached, ==, NULL);
+
+	ASSERT0(atomic_load_32(&zp->z_sync_writes_cnt));
+	ASSERT0(atomic_load_32(&zp->z_async_writes_cnt));
 }
 
 static int
 zfs_znode_hold_cache_constructor(void *buf, void *arg, int kmflags)
 {
+	(void) arg, (void) kmflags;
 	znode_hold_t *zh = buf;
 
 	mutex_init(&zh->zh_lock, NULL, MUTEX_DEFAULT, NULL);
@@ -170,6 +177,7 @@ zfs_znode_hold_cache_constructor(void *buf, void *arg, int kmflags)
 static void
 zfs_znode_hold_cache_destructor(void *buf, void *arg)
 {
+	(void) arg;
 	znode_hold_t *zh = buf;
 
 	mutex_destroy(&zh->zh_lock);
@@ -263,7 +271,7 @@ zfs_znode_held(zfsvfs_t *zfsvfs, uint64_t obj)
 	return (held);
 }
 
-static znode_hold_t *
+znode_hold_t *
 zfs_znode_hold_enter(zfsvfs_t *zfsvfs, uint64_t obj)
 {
 	znode_hold_t *zh, *zh_new, search;
@@ -296,7 +304,7 @@ zfs_znode_hold_enter(zfsvfs_t *zfsvfs, uint64_t obj)
 	return (zh);
 }
 
-static void
+void
 zfs_znode_hold_exit(zfsvfs_t *zfsvfs, znode_hold_t *zh)
 {
 	int i = ZFS_OBJ_HASH(zfsvfs, zh->zh_obj);
@@ -349,7 +357,7 @@ zfs_znode_sa_init(zfsvfs_t *zfsvfs, znode_t *zp,
 void
 zfs_znode_dmu_fini(znode_t *zp)
 {
-	ASSERT(zfs_znode_held(ZTOZSB(zp), zp->z_id) || zp->z_unlinked ||
+	ASSERT(zfs_znode_held(ZTOZSB(zp), zp->z_id) ||
 	    RW_WRITE_HELD(&ZTOZSB(zp)->z_teardown_inactive_lock));
 
 	sa_handle_destroy(zp->z_sa_hdl);
@@ -412,7 +420,12 @@ zfs_inode_set_ops(zfsvfs_t *zfsvfs, struct inode *ip)
 		break;
 
 	case S_IFDIR:
+#ifdef HAVE_RENAME2_OPERATIONS_WRAPPER
+		ip->i_flags |= S_IOPS_WRAPPER;
+		ip->i_op = &zpl_dir_inode_operations.ops;
+#else
 		ip->i_op = &zpl_dir_inode_operations;
+#endif
 		ip->i_fop = &zpl_dir_file_operations;
 		ITOZ(ip)->z_zn_prefetch = B_TRUE;
 		break;
@@ -428,7 +441,7 @@ zfs_inode_set_ops(zfsvfs_t *zfsvfs, struct inode *ip)
 	case S_IFBLK:
 		(void) sa_lookup(ITOZ(ip)->z_sa_hdl, SA_ZPL_RDEV(zfsvfs), &rdev,
 		    sizeof (rdev));
-		fallthrough;
+		zfs_fallthrough;
 	case S_IFIFO:
 	case S_IFSOCK:
 		init_special_inode(ip, ip->i_mode, rdev);
@@ -482,13 +495,11 @@ zfs_set_inode_flags(znode_t *zp, struct inode *ip)
 void
 zfs_znode_update_vfs(znode_t *zp)
 {
-	zfsvfs_t	*zfsvfs;
 	struct inode	*ip;
 	uint32_t	blksize;
 	u_longlong_t	i_blocks;
 
 	ASSERT(zp != NULL);
-	zfsvfs = ZTOZSB(zp);
 	ip = ZTOI(zp);
 
 	/* Skip .zfs control nodes which do not exist on disk. */
@@ -540,7 +551,9 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 	ASSERT3P(zp->z_xattr_cached, ==, NULL);
 	zp->z_unlinked = B_FALSE;
 	zp->z_atime_dirty = B_FALSE;
+#if !defined(HAVE_FILEMAP_RANGE_HAS_PAGE)
 	zp->z_is_mapped = B_FALSE;
+#endif
 	zp->z_is_ctldir = B_FALSE;
 	zp->z_suspended = B_FALSE;
 	zp->z_sa_hdl = NULL;
@@ -549,6 +562,8 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 	zp->z_blksz = blksz;
 	zp->z_seq = 0x7A4653;
 	zp->z_sync_cnt = 0;
+	zp->z_sync_writes_cnt = 0;
+	zp->z_async_writes_cnt = 0;
 
 	zfs_znode_sa_init(zfsvfs, zp, db, obj_type, hdl);
 
@@ -1576,7 +1591,7 @@ zfs_zero_partial_page(znode_t *zp, uint64_t start, uint64_t len)
 			flush_dcache_page(pp);
 
 		pb = kmap(pp);
-		bzero(pb + off, len);
+		memset(pb + off, 0, len);
 		kunmap(pp);
 
 		if (mapping_writably_mapped(mp))
@@ -1628,7 +1643,7 @@ zfs_free_range(znode_t *zp, uint64_t off, uint64_t len)
 	 * Zero partial page cache entries.  This must be done under a
 	 * range lock in order to keep the ARC and page cache in sync.
 	 */
-	if (zp->z_is_mapped) {
+	if (zn_has_cached_data(zp, off, off + len - 1)) {
 		loff_t first_page, last_page, page_len;
 		loff_t first_page_offset, last_page_offset;
 
@@ -1851,7 +1866,7 @@ zfs_create_fs(objset_t *os, cred_t *cr, nvlist_t *zplprops, dmu_tx_t *tx)
 	while ((elem = nvlist_next_nvpair(zplprops, elem)) != NULL) {
 		/* For the moment we expect all zpl props to be uint64_ts */
 		uint64_t val;
-		char *name;
+		const char *name;
 
 		ASSERT(nvpair_type(elem) == DATA_TYPE_UINT64);
 		VERIFY(nvpair_value_uint64(elem, &val) == 0);
@@ -1870,6 +1885,7 @@ zfs_create_fs(objset_t *os, cred_t *cr, nvlist_t *zplprops, dmu_tx_t *tx)
 	}
 	ASSERT(version != 0);
 	error = zap_update(os, moid, ZPL_VERSION_STR, 8, 1, &version, tx);
+	ASSERT(error == 0);
 
 	/*
 	 * Create zap object used for SA attribute registration
@@ -1947,7 +1963,7 @@ zfs_create_fs(objset_t *os, cred_t *cr, nvlist_t *zplprops, dmu_tx_t *tx)
 	}
 
 	VERIFY(0 == zfs_acl_ids_create(rootzp, IS_ROOT_NODE, &vattr,
-	    cr, NULL, &acl_ids));
+	    cr, NULL, &acl_ids, zfs_init_idmap));
 	zfs_mknode(rootzp, &vattr, tx, cr, IS_ROOT_NODE, &zp, &acl_ids);
 	ASSERT3P(zp, ==, rootzp);
 	error = zap_add(os, moid, ZFS_ROOT_OBJ, 8, 1, &rootzp->z_id, tx);
@@ -1988,7 +2004,7 @@ zfs_sa_setup(objset_t *osp, sa_attr_type_t **sa_table)
 
 static int
 zfs_grab_sa_handle(objset_t *osp, uint64_t obj, sa_handle_t **hdlp,
-    dmu_buf_t **db, void *tag)
+    dmu_buf_t **db, const void *tag)
 {
 	dmu_object_info_t doi;
 	int error;
@@ -2015,7 +2031,7 @@ zfs_grab_sa_handle(objset_t *osp, uint64_t obj, sa_handle_t **hdlp,
 }
 
 static void
-zfs_release_sa_handle(sa_handle_t *hdl, dmu_buf_t *db, void *tag)
+zfs_release_sa_handle(sa_handle_t *hdl, dmu_buf_t *db, const void *tag)
 {
 	sa_handle_destroy(hdl);
 	sa_buf_rele(db, tag);
@@ -2123,7 +2139,6 @@ zfs_obj_to_path_impl(objset_t *osp, uint64_t obj, sa_handle_t *hdl,
 	} else if (error != ENOENT) {
 		return (error);
 	}
-	error = 0;
 
 	for (;;) {
 		uint64_t pobj = 0;
@@ -2148,7 +2163,7 @@ zfs_obj_to_path_impl(objset_t *osp, uint64_t obj, sa_handle_t *hdl,
 
 		component[0] = '/';
 		if (is_xattrdir) {
-			(void) sprintf(component + 1, "<xattrdir>");
+			strcpy(component + 1, "<xattrdir>");
 		} else {
 			error = zap_value_search(osp, pobj, obj,
 			    ZFS_DIRENT_OBJ(-1ULL), component + 1);
@@ -2159,7 +2174,7 @@ zfs_obj_to_path_impl(objset_t *osp, uint64_t obj, sa_handle_t *hdl,
 		complen = strlen(component);
 		path -= complen;
 		ASSERT(path >= buf);
-		bcopy(component, path, complen);
+		memcpy(path, component, complen);
 		obj = pobj;
 
 		if (sa_hdl != hdl) {

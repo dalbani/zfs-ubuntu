@@ -4,7 +4,8 @@ Documentation=man:zed(8)
 ConditionPathIsDirectory=/sys/module/zfs
 
 [Service]
-ExecStart=/usr/sbin/zed -F
+EnvironmentFile=-@initconfdir@/zfs
+ExecStart=@sbindir@/zed -F
 Restart=always
 
 [Install]

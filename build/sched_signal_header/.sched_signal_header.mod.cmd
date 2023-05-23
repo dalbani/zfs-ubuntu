@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/sched_signal_header/sched_signal_header.mod := printf '%s\n'   sched_signal_header.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/sched_signal_header/"$$0) }' > /home/xnox/canonical/zfs/build/sched_signal_header/sched_signal_header.mod

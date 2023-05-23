@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/timer_list_function/timer_list_function.mod := printf '%s\n'   timer_list_function.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/timer_list_function/"$$0) }' > /home/xnox/canonical/zfs/build/timer_list_function/timer_list_function.mod

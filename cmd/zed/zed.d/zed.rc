@@ -1,8 +1,7 @@
 ##
-# zed.rc
-#
-# This file should be owned by root and permissioned 0600.
+# zed.rc – ZEDLET configuration.
 ##
+# shellcheck disable=SC2034
 
 ##
 # Absolute path to the debug output file.
@@ -42,7 +41,7 @@ ZED_EMAIL_ADDR="root"
 ##
 # Minimum number of seconds between notifications for a similar event.
 #
-ZED_NOTIFY_INTERVAL_SECS=3600
+#ZED_NOTIFY_INTERVAL_SECS=3600
 
 ##
 # Notification verbosity.

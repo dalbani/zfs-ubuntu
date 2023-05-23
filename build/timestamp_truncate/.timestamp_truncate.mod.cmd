@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/timestamp_truncate/timestamp_truncate.mod := printf '%s\n'   timestamp_truncate.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/timestamp_truncate/"$$0) }' > /home/xnox/canonical/zfs/build/timestamp_truncate/timestamp_truncate.mod

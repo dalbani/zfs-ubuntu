@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/config_trim_unusued_ksyms/modules.order := {   echo /home/xnox/canonical/zfs/build/config_trim_unusued_ksyms/config_trim_unusued_ksyms.ko; :; } | awk '!x[$$0]++' - > /home/xnox/canonical/zfs/build/config_trim_unusued_ksyms/modules.order

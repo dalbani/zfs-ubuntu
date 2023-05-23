@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/rwsem_atomic_long_count/modules.order := {   echo /home/xnox/canonical/zfs/build/rwsem_atomic_long_count/rwsem_atomic_long_count.ko; :; } | awk '!x[$$0]++' - > /home/xnox/canonical/zfs/build/rwsem_atomic_long_count/modules.order

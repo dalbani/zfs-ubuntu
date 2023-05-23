@@ -1,0 +1,1 @@
+cmd_/home/xnox/canonical/zfs/build/conftest/modules.order := {   echo /home/xnox/canonical/zfs/build/conftest/conftest.ko; :; } | awk '!x[$$0]++' - > /home/xnox/canonical/zfs/build/conftest/modules.order

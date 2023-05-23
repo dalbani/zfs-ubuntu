@@ -8,7 +8,8 @@ ConditionPathIsDirectory=/sys/module/zfs
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/sbin/zvol_wait
+EnvironmentFile=-@initconfdir@/zfs
+ExecStart=@bindir@/zvol_wait
 
 [Install]
 WantedBy=zfs-volumes.target
