@@ -97,7 +97,12 @@ rm_mod_dep spl
 
 # Load zfs kernel module before tests
 echo "Loading new zfs modules"
-$MODPROBE zfs
+if ! $MODPROBE zfs; then
+	# Cannot modprobe dkms module without enrolled MOK key
+	if [ "$(mokutil --sb-state)" = "SecureBoot enabled" ]; then
+		exit 77
+	fi
+fi
 
 for t in ${TESTS}
 do
