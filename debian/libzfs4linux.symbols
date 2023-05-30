@@ -77,6 +77,7 @@ libzfs.so.4 libzfs4linux #MINVER#
  atomic_inc_ulong_nv@Base 2.1.99-0ubuntu1
  atomic_inc_ushort@Base 2.1.99-0ubuntu1
  atomic_inc_ushort_nv@Base 2.1.99-0ubuntu1
+ (arch=armhf)atomic_load_64@Base 2.1.99-0ubuntu1
  atomic_or_16@Base 2.1.99-0ubuntu1
  atomic_or_16_nv@Base 2.1.99-0ubuntu1
  atomic_or_32@Base 2.1.99-0ubuntu1
@@ -94,6 +95,7 @@ libzfs.so.4 libzfs4linux #MINVER#
  atomic_or_ushort@Base 2.1.99-0ubuntu1
  atomic_or_ushort_nv@Base 2.1.99-0ubuntu1
  atomic_set_long_excl@Base 2.1.99-0ubuntu1
+ (arch=armhf)atomic_store_64@Base 2.1.99-0ubuntu1
  atomic_sub_16@Base 2.1.99-0ubuntu1
  atomic_sub_16_nv@Base 2.1.99-0ubuntu1
  atomic_sub_32@Base 2.1.99-0ubuntu1
@@ -666,6 +668,7 @@ libzfs_core.so.3 libzfs4linux #MINVER#
  atomic_inc_ulong_nv@Base 2.0
  atomic_inc_ushort@Base 2.0
  atomic_inc_ushort_nv@Base 2.0
+ (arch=armhf)atomic_load_64@Base 2.1.99-0ubuntu1
  atomic_or_16@Base 2.0
  atomic_or_16_nv@Base 2.0
  atomic_or_32@Base 2.0
@@ -683,6 +686,7 @@ libzfs_core.so.3 libzfs4linux #MINVER#
  atomic_or_ushort@Base 2.0
  atomic_or_ushort_nv@Base 2.0
  atomic_set_long_excl@Base 2.0
+ (arch=armhf)atomic_store_64@Base 2.1.99-0ubuntu1
  atomic_sub_16@Base 2.0
  atomic_sub_16_nv@Base 2.0
  atomic_sub_32@Base 2.0
