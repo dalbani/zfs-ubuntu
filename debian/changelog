@@ -1,3 +1,10 @@
+zfs-linux (2.1.99-0ubuntu3) mantic; urgency=medium
+
+  * Fixup symbols for non-amd64 arches.
+  * Remove all known zfs kernel modules in the smoke test.
+
+ -- Dimitri John Ledkov <dimitri.ledkov@canonical.com>  Tue, 30 May 2023 10:33:20 +0100
+
 zfs-linux (2.1.99-0ubuntu2) mantic; urgency=medium
 
   * autopkgtest: skip on secureboot enabled machines.

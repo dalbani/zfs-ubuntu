@@ -92,8 +92,16 @@ rm_mod_dep()
 systemctl stop zfs-zed.service
 
 echo "Removing existing zfs modules"
+
 rm_mod_dep zfs
 rm_mod_dep spl
+rm_mod_dep icp
+rm_mod_dep zavl
+rm_mod_dep zcommon
+rm_mod_dep zlua
+rm_mod_dep znvpair
+rm_mod_dep zunicode
+rm_mod_dep zzstd
 
 # Load zfs kernel module before tests
 echo "Loading new zfs modules"
@@ -102,6 +110,7 @@ if ! $MODPROBE zfs; then
 	if [ "$(mokutil --sb-state)" = "SecureBoot enabled" ]; then
 		exit 77
 	fi
+	dmesg
 fi
 
 for t in ${TESTS}
