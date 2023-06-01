@@ -1,1 +1,0 @@
-cmd_/home/xnox/canonical/zfs/build/kernel_read/modules.order := {   echo /home/xnox/canonical/zfs/build/kernel_read/kernel_read.ko; :; } | awk '!x[$$0]++' - > /home/xnox/canonical/zfs/build/kernel_read/modules.order

@@ -1,1 +1,0 @@
-cmd_/home/xnox/canonical/zfs/build/config_trim_unusued_ksyms/config_trim_unusued_ksyms.mod := printf '%s\n'   config_trim_unusued_ksyms.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/config_trim_unusued_ksyms/"$$0) }' > /home/xnox/canonical/zfs/build/config_trim_unusued_ksyms/config_trim_unusued_ksyms.mod

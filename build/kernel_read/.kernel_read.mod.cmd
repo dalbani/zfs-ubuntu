@@ -1,1 +1,0 @@
-cmd_/home/xnox/canonical/zfs/build/kernel_read/kernel_read.mod := printf '%s\n'   kernel_read.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/kernel_read/"$$0) }' > /home/xnox/canonical/zfs/build/kernel_read/kernel_read.mod

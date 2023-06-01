@@ -1,1 +1,0 @@
-cmd_/home/xnox/canonical/zfs/build/usleep_range/modules.order := {   echo /home/xnox/canonical/zfs/build/usleep_range/usleep_range.ko; :; } | awk '!x[$$0]++' - > /home/xnox/canonical/zfs/build/usleep_range/modules.order

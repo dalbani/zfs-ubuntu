@@ -1,1 +1,0 @@
-cmd_/home/xnox/canonical/zfs/build/super_user_ns/modules.order := {   echo /home/xnox/canonical/zfs/build/super_user_ns/super_user_ns.ko; :; } | awk '!x[$$0]++' - > /home/xnox/canonical/zfs/build/super_user_ns/modules.order

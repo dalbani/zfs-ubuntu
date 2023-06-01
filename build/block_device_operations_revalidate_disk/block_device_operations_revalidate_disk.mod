@@ -1,1 +1,0 @@
-/home/xnox/canonical/zfs/build/block_device_operations_revalidate_disk/block_device_operations_revalidate_disk.o

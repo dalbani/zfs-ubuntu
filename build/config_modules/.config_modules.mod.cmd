@@ -1,1 +1,0 @@
-cmd_/home/xnox/canonical/zfs/build/config_modules/config_modules.mod := printf '%s\n'   config_modules.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/config_modules/"$$0) }' > /home/xnox/canonical/zfs/build/config_modules/config_modules.mod
