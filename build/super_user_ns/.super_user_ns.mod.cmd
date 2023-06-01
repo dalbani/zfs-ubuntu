@@ -1,1 +1,0 @@
-cmd_/home/xnox/canonical/zfs/build/super_user_ns/super_user_ns.mod := printf '%s\n'   super_user_ns.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/super_user_ns/"$$0) }' > /home/xnox/canonical/zfs/build/super_user_ns/super_user_ns.mod

@@ -1,1 +1,0 @@
-cmd_/home/xnox/canonical/zfs/build/config_zlib_deflate/config_zlib_deflate.mod := printf '%s\n'   config_zlib_deflate.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/config_zlib_deflate/"$$0) }' > /home/xnox/canonical/zfs/build/config_zlib_deflate/config_zlib_deflate.mod

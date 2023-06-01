@@ -1,1 +1,0 @@
-cmd_/home/xnox/canonical/zfs/build/rwsem_activity/rwsem_activity.mod := printf '%s\n'   rwsem_activity.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/rwsem_activity/"$$0) }' > /home/xnox/canonical/zfs/build/rwsem_activity/rwsem_activity.mod

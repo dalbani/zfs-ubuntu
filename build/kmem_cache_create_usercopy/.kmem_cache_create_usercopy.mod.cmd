@@ -1,1 +1,0 @@
-cmd_/home/xnox/canonical/zfs/build/kmem_cache_create_usercopy/kmem_cache_create_usercopy.mod := printf '%s\n'   kmem_cache_create_usercopy.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/kmem_cache_create_usercopy/"$$0) }' > /home/xnox/canonical/zfs/build/kmem_cache_create_usercopy/kmem_cache_create_usercopy.mod

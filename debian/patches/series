@@ -5,7 +5,6 @@
 #1003-relocate-zvol_wait.patch
 1005-enable-zed.patch
 #1006-zed-service-bindir.patch
-0001-systemd-Use-non-absolute-paths-in-Exec-lines.patch
 1007-dkms-pkgcfg.patch
 2100-zfs-load-module.patch
 3100-remove-libzfs-module-timeout.patch

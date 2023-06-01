@@ -3070,7 +3070,6 @@ libzpool.so.5 libzpool5linux #MINVER#
  zfs_remove_max_segment@Base 0.8.2
  zfs_resolve_shortname@Base 2.1.99-0ubuntu1
  zfs_scan_suspend_progress@Base 0.8.2
- zfs_scrub_error_blocks_per_txg@Base 2.1.99-0ubuntu1
  zfs_secpolicy_destroy_perms@Base 0.8.2
  zfs_secpolicy_rename_perms@Base 0.8.2
  zfs_secpolicy_snapshot_perms@Base 0.8.2

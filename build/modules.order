@@ -1,6 +1,0 @@
-/home/xnox/canonical/zfs/build/config_modules/config_modules.ko
-/home/xnox/canonical/zfs/build/config_block/config_block.ko
-/home/xnox/canonical/zfs/build/config_debug_lock_alloc/config_debug_lock_alloc.ko
-/home/xnox/canonical/zfs/build/config_trim_unusued_ksyms/config_trim_unusued_ksyms.ko
-/home/xnox/canonical/zfs/build/config_zlib_deflate/config_zlib_deflate.ko
-/home/xnox/canonical/zfs/build/config_zlib_inflate/config_zlib_inflate.ko

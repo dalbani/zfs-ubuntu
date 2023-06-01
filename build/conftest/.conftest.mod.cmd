@@ -1,1 +1,0 @@
-cmd_/home/xnox/canonical/zfs/build/conftest/conftest.mod := printf '%s\n'   conftest.o | awk '!x[$$0]++ { print("/home/xnox/canonical/zfs/build/conftest/"$$0) }' > /home/xnox/canonical/zfs/build/conftest/conftest.mod

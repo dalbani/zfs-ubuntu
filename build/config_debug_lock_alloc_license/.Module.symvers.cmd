@@ -1,1 +1,0 @@
-cmd_/home/xnox/canonical/zfs/build/config_debug_lock_alloc_license/Module.symvers := sed 's/ko$$/o/' /home/xnox/canonical/zfs/build/config_debug_lock_alloc_license/modules.order | scripts/mod/modpost -m -a  -o /home/xnox/canonical/zfs/build/config_debug_lock_alloc_license/Module.symvers -e -i Module.symvers   -w -T -

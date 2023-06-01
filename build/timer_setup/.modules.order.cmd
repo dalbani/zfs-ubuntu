@@ -1,1 +1,0 @@
-cmd_/home/xnox/canonical/zfs/build/timer_setup/modules.order := {   echo /home/xnox/canonical/zfs/build/timer_setup/timer_setup.ko; :; } | awk '!x[$$0]++' - > /home/xnox/canonical/zfs/build/timer_setup/modules.order

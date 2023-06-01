@@ -1,1 +1,0 @@
-cmd_/home/xnox/canonical/zfs/build/sched_signal_header/modules.order := {   echo /home/xnox/canonical/zfs/build/sched_signal_header/sched_signal_header.ko; :; } | awk '!x[$$0]++' - > /home/xnox/canonical/zfs/build/sched_signal_header/modules.order

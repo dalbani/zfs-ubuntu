@@ -1,1 +1,0 @@
-cmd_/home/xnox/canonical/zfs/build/pde_data/modules.order := {   echo /home/xnox/canonical/zfs/build/pde_data/pde_data.ko; :; } | awk '!x[$$0]++' - > /home/xnox/canonical/zfs/build/pde_data/modules.order
