@@ -117,9 +117,9 @@ unsigned long zfs_rebuild_max_segment = 1024 * 1024;
  * segment size is also large (zfs_rebuild_max_segment=1M).  This helps keep
  * the queue depth short.
  *
- * 64MB was observed to deliver the best performance and set as the default.             
- * Testing was performed with a 106-drive dRAID HDD pool (draid2:11d:106c)               
- * and a rebuild rate of 1.2GB/s was measured to the distribute spare.                   
+ * 64MB was observed to deliver the best performance and set as the default.
+ * Testing was performed with a 106-drive dRAID HDD pool (draid2:11d:106c)
+ * and a rebuild rate of 1.2GB/s was measured to the distribute spare.
  * Smaller values were unable to fully saturate the available pool I/O.
  */
 unsigned long zfs_rebuild_vdev_limit = 64 << 20;
